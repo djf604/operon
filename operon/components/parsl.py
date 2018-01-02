@@ -10,7 +10,6 @@ import six
 from parsl import DataFlowKernel, ThreadPoolExecutor, App
 
 from operon.components import BasePipeline
-from operon.containers import OperonDict
 
 import networkx as nx
 
@@ -21,14 +20,14 @@ import networkx as nx
 class ParslPipeline(BasePipeline):
     def _run_pipeline(self, pipeline_args, pipeline_config):
         self.run_pipeline(pipeline_args, pipeline_config)
-        workflow_graph = self._assemble_graph(Software._blueprints, CodeBlock._blueprints)
-        pipeline_futs = self._assemble_workflow(workflow_graph)
+        workflow_graph = self._assemble_graph(ParslAppBlueprint._blueprints.values())
+        pipeline_futs = self._register_workflow(workflow_graph)
 
         # Wait for all apps to complete
         for fut in pipeline_futs:
             fut.result()
 
-    def _assemble_workflow(self, workflow_graph):
+    def _register_workflow(self, workflow_graph):
         # Set up parsl
         workers = ThreadPoolExecutor(max_workers=8)
         dfk = DataFlowKernel(executors=[workers])
@@ -87,7 +86,6 @@ class ParslPipeline(BasePipeline):
                     stderr=_app_blueprint['stderr']
                 )
             else:
-
                 _app_future = _pythonapp(
                     func_=_app_blueprint['func'],
                     func_args=_app_blueprint['args'],
@@ -119,33 +117,26 @@ class ParslPipeline(BasePipeline):
 
         return app_futures
 
-    def _assemble_graph(self, bash_blueprint, python_blueprint):
+    def _assemble_graph(self, blueprints):
         # Initialize a directed graph
         digraph = nx.DiGraph()
 
         # Iterate through edges, and add nodes as necessary
-        for bashb in bash_blueprint:
-            digraph.add_node(bashb['id'], name=bashb['name'], type='app', blueprint=bashb)
+        for blueprint in blueprints:
+            if blueprint['type'] == 'bash':
+                app_id = blueprint['id']
+                digraph.add_node(blueprint['id'], name=blueprint['name'], type='app', blueprint=blueprint)
+            else:
+                app_id = blueprint['func'].__name__
+                digraph.add_node(app_id, name=app_id, type='app', blueprint=blueprint)
 
-            for b_input in bashb['inputs']:
-                digraph.add_node(b_input, name=b_input, type='data')
-                digraph.add_edge(b_input, bashb['id'])
+            for blp_input in blueprint['inputs']:
+                digraph.add_node(blp_input, name=blp_input, type='data')
+                digraph.add_edge(blp_input, app_id)
 
-            for b_output in bashb['outputs']:
-                digraph.add_node(b_output, name=b_output, type='data')
-                digraph.add_edge(bashb['id'], b_output)
-
-        for pyb in python_blueprint:
-            func_id = pyb['func'].__name__
-            digraph.add_node(func_id, name=func_id, type='app', blueprint=pyb)
-
-            for py_input in pyb['inputs']:
-                digraph.add_node(py_input, name=py_input, type='data')
-                digraph.add_edge(py_input, func_id)
-
-            for py_output in pyb['outputs']:
-                digraph.add_node(py_output, name=py_output, type='data')
-                digraph.add_edge(func_id, py_output)
+            for blp_output in blueprint['outputs']:
+                digraph.add_node(blp_output, name=blp_output, type='data')
+                digraph.add_edge(app_id, blp_output)
 
         # Output graph in JSON format
         json_digraph = digraph.copy()
@@ -156,7 +147,18 @@ class ParslPipeline(BasePipeline):
         return digraph
 
 
-class Software(object):
+class ParslAppBlueprint(object):
+    _id_counter = 0
+    _blueprints = dict()
+    _app_futures = dict()
+
+    @classmethod
+    def get_id(cls):
+        cls._id_counter += 1
+        return cls._id_counter
+
+
+class Software(ParslAppBlueprint):
     _id = 0
     _blueprints = list()
     _software_paths = set()
@@ -175,7 +177,10 @@ class Software(object):
         :param kwargs:
         :return:
         """
-        Software._blueprints.append(self.prep(*args, **kwargs))
+        blueprint = self.prep(*args, **kwargs)
+        # Software._blueprints.append(blueprint)
+        ParslAppBlueprint._blueprints[blueprint['id']] = blueprint
+        return DeferredApp(blueprint['id'])
 
     def run(self, *args, **kwargs):
         """
@@ -185,7 +190,7 @@ class Software(object):
 
     def prep(self, *args, **kwargs):
         app_blueprint = {
-            'id': '__app__{}'.format(str(uuid.uuid4())),
+            'id': '__app__{}'.format(ParslAppBlueprint.get_id()),
             'type': 'bash',
             'name': kwargs.get('action', self.path),
             'cmd': '',
@@ -363,12 +368,14 @@ class Pipe(object):
         return str(self.piped_software_blueprint)
 
 
-class CodeBlock(object):
+class CodeBlock(ParslAppBlueprint):
     _blueprints = list()
 
     @staticmethod
     def register(func, args=None, kwargs=None, inputs=None, outputs=None, stdout=None, stderr=None, **_kwargs):
-        CodeBlock._blueprints.append({
+        blueprint_id = '__app__{}'.format(ParslAppBlueprint.get_id())
+        ParslAppBlueprint._blueprints[blueprint_id] = {
+            'id': blueprint_id,
             'type': 'python',
             'func': func,
             'args': args if args else list(),
@@ -377,7 +384,19 @@ class CodeBlock(object):
             'outputs': list(map(str, outputs)),
             'stdout': stdout,
             'stderr': stderr
-        })
+        }
+        # CodeBlock._blueprints.append({
+        #     'id': blueprint_id,
+        #     'type': 'python',
+        #     'func': func,
+        #     'args': args if args else list(),
+        #     'kwargs': kwargs if kwargs else dict(),
+        #     'inputs': list(map(str, inputs)),
+        #     'outputs': list(map(str, outputs)),
+        #     'stdout': stdout,
+        #     'stderr': stderr
+        # })
+        return DeferredApp(blueprint_id)
 
 
     # def register(*args, inputs=None, outputs=None, stdin=None, stderr=None):
@@ -387,3 +406,8 @@ class CodeBlock(object):
     #             print(args)
     #             print(kwargs)
     #             return func(*args, )
+
+
+class DeferredApp(object):
+    def __init__(self, id):
+        self.id = id

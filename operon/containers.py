@@ -5,7 +5,11 @@ from parsl.app.futures import DataFuture
 
 
 
-class OperonDict(Future):
+class DeferredDict(Future, MutableMapping):
+    """
+    Mapping type which imitates a dictionary, but resolves all Futures held within when
+    it's used as an input to a parsl App
+    """
     _mappings = list()
 
     def __init__(self, dict=None):
@@ -13,6 +17,9 @@ class OperonDict(Future):
         self._app_future = None
         self._tid = None
         self._dfk = None
+
+        # DefferedDict is mutable until it's used as parsl input
+        self._mutable = True
 
 
     def _set_callback_info(self, app_future, tid, dfk):
