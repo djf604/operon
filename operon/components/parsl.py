@@ -15,6 +15,12 @@ import networkx as nx
 
 # import parsl
 # parsl.set_file_logger('parsl.log')
+from collections import namedtuple
+
+
+class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path')):
+    def __new__(cls, tag, config_key, executable_path=None):
+        return super().__new__(cls, tag, config_key, executable_path)
 
 
 class ParslPipeline(BasePipeline):
