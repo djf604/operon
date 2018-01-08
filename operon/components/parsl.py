@@ -4,7 +4,6 @@ from copy import copy, deepcopy
 from functools import wraps
 import inspect
 import uuid
-import random
 
 import six
 from parsl import DataFlowKernel, ThreadPoolExecutor, App
