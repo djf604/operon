@@ -43,26 +43,38 @@ def add_common_pipeline_args(parser):
     parser.add_argument('--log')
 
 
+def get_operon_subcommands(classes=False):
+    operon_subcommands = [
+        operon_subcommand
+        for operon_subcommand in [
+            name for _, name, _
+            in pkgutil.iter_modules(operon.util.commands.__path__)
+        ]
+    ]
+    if not classes:
+        return operon_subcommands
+
+    return {
+        operon_subcommand: fetch_command_class(operon_subcommand)
+        for operon_subcommand in operon_subcommands
+    }
+
+
 def execute_from_command_line(argv=None):
     argv = argv or sys.argv[:]
 
-    # Get command classes
-    operon_command_classes = {operon_command: fetch_command_class(operon_command)
-                              for operon_command in [
-                                  name for _, name, _
-                                  in pkgutil.iter_modules(operon.util.commands.__path__)
-                                  ]
-                              }
+    # Get subcommand classes
+    operon_subcommand_classes = get_operon_subcommands(classes=True)
 
     # Create subparsers
     parser = argparse.ArgumentParser(prog='operon')
     parser.add_argument('--version', action='version', version=__version__)
     subparsers = parser.add_subparsers(dest='subcommand',
-                                       metavar='[{}]'.format(', '.join(operon_command_classes.keys())))
+                                       metavar='[{}]'.format(', '.join(operon_subcommand_classes.keys())))
 
     # Add a subparser for each subcommand
-    for operon_command, operon_command_class in six.iteritems(operon_command_classes):
-        subparsers.add_parser(operon_command.replace('_', '-'), help=operon_command_class.help_text())
+    for operon_subcommand, operon_subcommand_class in operon_subcommand_classes.items():
+        subparsers.add_parser(operon_subcommand.replace('_', '-'), help=operon_subcommand_class.help_text())
 
     if len(sys.argv) == 1:
         # If no arguments were given, print help
@@ -74,7 +86,7 @@ def execute_from_command_line(argv=None):
             parser.print_help()
             sys.exit(0)
         try:
-            operon_command_classes[subcommand].run(argv[2:])
+            operon_subcommand_classes[subcommand].run(argv[2:])
         except Exception as e:
             sys.stderr.write('Operon encountered an error when trying to execute {}:\n'.format(subcommand))
             sys.stderr.write(str(e) + '\n')

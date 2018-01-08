@@ -2,7 +2,12 @@ import os
 import sys
 import errno
 import argparse
+import inspect
+import json
+from datetime import datetime
+
 from operon.util.commands import BaseCommand
+import operon._completer
 
 ARGV_OPERON_HOME_ROOT = 0
 
@@ -21,12 +26,37 @@ def make_operon_home(operon_home_root):
     operon_root_configs = os.path.join(operon_home_root, '.operon', 'configs')
     try:
         # Make directory tree
+        sys.stderr.write('Creating directory tree\n')
         mkdir_p(operon_root_pipelines)
         mkdir_p(operon_root_configs)
 
         # Add __init__.py to make modules
-        os.mknod(os.path.join(operon_root_pipelines, '__init__.py'), 0o644)
-        os.mknod(os.path.join(operon_root_configs, '__init__.py'), 0o644)
+        sys.stderr.write('Initializing python modules\n')
+        # os.mknod(os.path.join(operon_root_pipelines, '__init__.py'), 0o644)
+        # os.mknod(os.path.join(operon_root_configs, '__init__.py'), 0o644)
+
+        # Install completion script
+        sys.stderr.write('Installing auto-completer script\n')
+        operon_completer_path = os.path.join(operon_home_root, '.operon', 'operon_completer')
+        with open(operon_completer_path, 'w') as operon_completer:
+            operon_completer.write(inspect.getsource(operon._completer))
+        os.chmod(operon_completer_path, 0o755)
+
+        # TODO Register completion program in ~/.bash_completion
+
+        # Write out an empty Operon State JSON
+        sys.stderr.write('Writing out empty state file\n')
+        operon_state_json_path = os.path.join(operon_home_root, '.operon', 'operon_state.json')
+        empty_state = {
+            'pipelines': list(),
+            'operon': {
+                'version': operon.__version__,
+                'installed': datetime.now().strftime('%Y%b%d %H:%M:%S'),
+                'home': operon_home_root
+            }
+        }
+        with open(operon_state_json_path, 'w') as operon_state_json:
+            operon_state_json.write(json.dumps(empty_state) + '\n')
 
         # Write out user messages
         sys.stderr.write('Operon successfully initialized at {}\n'.format(operon_home_root))
