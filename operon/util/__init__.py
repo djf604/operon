@@ -4,9 +4,23 @@ import traceback
 import argparse
 import json
 from importlib import import_module
+import importlib.util
 
 import pkgutil
 import operon.util.commands
+
+
+def load_pipeline_file(pipeline_filepath):
+    """
+    This only works in Python 3.5+
+    Taken from https://stackoverflow.com/a/67692/1539628
+    :param pipeline_filepath:
+    :return:
+    """
+    spec = importlib.util.spec_from_file_location('operon.pipeline', pipeline_filepath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class OperonState(object):

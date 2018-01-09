@@ -1,5 +1,6 @@
 import os
-import imp
+
+from operon.util import load_pipeline_file
 
 
 class BaseCommand(object):
@@ -13,11 +14,10 @@ class BaseCommand(object):
 
         # Look for pipeline in installed directory first
         if os.path.isfile(pipeline_filepath):
-            return imp.load_source(pipeline_name,
-                                   pipeline_filepath.format(pipeline_name)).Pipeline()
+            return load_pipeline_file(pipeline_filepath).Pipeline()
         # Check to see if pipeline name is a full path to pipeline
         elif os.path.isfile(pipeline_name):
-            return imp.load_source('', pipeline_name).Pipeline()
+            return load_pipeline_file(pipeline_name).Pipeline()
         # If none of the above, return None
         return None
 
