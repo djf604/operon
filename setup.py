@@ -14,7 +14,9 @@ setup(
     packages=find_packages(),
     install_requires=['pathos>=0.2.1', 'six', 'libsubmit', 'parsl', 'networkx==2.0'],
     entry_points={
-        'console_scripts': ['operon = operon.util:execute_from_command_line']
+        'console_scripts': [
+            'operon = operon.util:execute_from_command_line'
+        ]
     },
     classifiers=[
         'Development Status :: 3 - Alpha',
