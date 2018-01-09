@@ -4,6 +4,8 @@ import shutil
 import argparse
 from operon.util.commands import BaseCommand
 import six.moves
+from operon.util import OperonState
+from datetime import datetime
 
 try:
     from pip import main as pip
@@ -30,6 +32,7 @@ class Command(BaseCommand):
         parser.add_argument('-y', action='store_true', help='Install all dependency packages without asking.')
         args = vars(parser.parse_args(command_args))
         pipeline_path = args['pipeline-path']
+        pipeline_name = os.path.splitext(os.path.basename(pipeline_path))[0]
         if pipeline_path.strip().lower() == 'help':
             parser.print_help()
             sys.exit(EXIT_CMD_SUCCESS)
@@ -50,6 +53,16 @@ class Command(BaseCommand):
         # Copy pipeline file
         try:
             shutil.copy2(pipeline_path, self.home_pipelines)
+
+            # Add pipeline to Operon state
+            with OperonState() as operon_state:
+                operon_state.insert_pipeline(
+                    name=pipeline_name,
+                    values={
+                        'installed_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
+                        'configured': False
+                    }
+                )
             sys.stderr.write('Pipeline {} successfully installed.\n'.format(os.path.basename(pipeline_path)))
         except (IOError, OSError, shutil.Error):
             sys.stderr.write('Pipeline at {} could not be installed into {}.\n'.format(pipeline_path,

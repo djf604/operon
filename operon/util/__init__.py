@@ -2,12 +2,34 @@ import sys
 import os
 import traceback
 import argparse
+import json
 from importlib import import_module
 
 import pkgutil
 import operon.util.commands
-from operon import __version__
-import six
+
+
+class OperonState(object):
+    def __init__(self):
+        # Get current state
+        operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
+        self.state_json_path = os.path.join(operon_home_root, '.operon', 'operon_state.json')
+        with open(self.state_json_path) as operon_state:
+            self.state = json.load(operon_state)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        with open(self.state_json_path, 'w') as operon_state:
+            json.dump(self.state, operon_state, indent=2)
+
+    def insert_pipeline(self, name, values):
+        self.state['pipelines'][name] = values
+
+    def remove_pipeline(self, name):
+        self.state['pipelines'].pop(name, None)
+
 
 
 def fetch_command_class(subcommand):
@@ -68,7 +90,7 @@ def execute_from_command_line(argv=None):
 
     # Create subparsers
     parser = argparse.ArgumentParser(prog='operon')
-    parser.add_argument('--version', action='version', version=__version__)
+    parser.add_argument('--version', action='version', version=operon.__version__)
     subparsers = parser.add_subparsers(dest='subcommand',
                                        metavar='[{}]'.format(', '.join(operon_subcommand_classes.keys())))
 

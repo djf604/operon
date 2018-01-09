@@ -6,7 +6,6 @@ import json
 try:
     from operon.util import get_operon_subcommands
 except ImportError:
-    sys.stderr.write('Aborted')
     sys.exit()
 
 COMPGEN = 'compgen -W "{options}" -- "{stub}"'
@@ -18,7 +17,7 @@ def get_pipeline_options():
     try:
         with open(operon_state_json_path) as operon_state_json:
             operon_state = json.load(operon_state_json)
-            return ' '.join(operon_state['pipelines'])
+            return ' '.join(operon_state['pipelines'].keys())
     except OSError:
         return ''
 
@@ -26,10 +25,13 @@ def get_pipeline_options():
 def get_completion_options(options, stub):
     if not options:
         return ''
-    return subprocess.check_output(COMPGEN.format(
-        options=options,
-        stub=stub
-    ), shell=True, executable=os.environ['SHELL']).decode()
+    try:
+        return subprocess.check_output(COMPGEN.format(
+            options=options,
+            stub=stub
+        ), shell=True, executable=os.environ['SHELL']).decode()
+    except subprocess.CalledProcessError:
+        return ''
 
 
 def completer():
