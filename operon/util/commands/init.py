@@ -45,7 +45,7 @@ def make_operon_home(operon_home_root):
         abort = False
         overwrite = input('Operon has already been initialized at {}\n'
                           'Would you like to remove the existing files and initialize a new '
-                          'Operon structure? [y/n] '.format(operon_home))
+                          'Operon structure? [y/n] '.format(operon_home_root))
         if overwrite.lower() not in {'yes', 'y'}:
             abort = True
         else:
