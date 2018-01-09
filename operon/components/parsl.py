@@ -14,6 +14,15 @@ import networkx as nx
 
 # import parsl
 # parsl.set_file_logger('parsl.log')
+from collections import namedtuple
+
+SOURCE = 0
+TARGET = 1
+
+
+class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path')):
+    def __new__(cls, tag, config_key, executable_path=None):
+        return super().__new__(cls, tag, config_key, executable_path)
 
 
 class ParslPipeline(BasePipeline):
@@ -138,10 +147,16 @@ class ParslPipeline(BasePipeline):
                 digraph.add_edge(app_id, blp_output)
 
         # Output graph in JSON format
-        json_digraph = digraph.copy()
-        for node in json_digraph.nodes():
-            json_digraph.node[node]['blueprint'] = None
-        print(json.dumps(nx.node_link_data(json_digraph), indent=2))
+        json_digraph = {'nodes': list(), 'edges': list()}
+        for node, nodedata in digraph.nodes.items():
+            json_digraph['nodes'].append(
+                {'data': {'id': os.path.basename(node), 'type': nodedata['type']}}
+            )
+        for edge, edgedata in digraph.edges.items():
+            json_digraph['edges'].append(
+                {'data': {'source': os.path.basename(edge[SOURCE]), 'target': os.path.basename(edge[TARGET])}}
+            )
+        print(json.dumps(json_digraph, indent=2))
 
         return digraph
 

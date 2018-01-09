@@ -456,6 +456,20 @@ class BasePipeline(object):
         """
         return list()
 
+    def conda(self):
+        """
+        Override this method.
+        Directives to download software from conda/bioconda.
+
+        The returned dictionary should have a key 'packages' and an
+        optional key 'channels'.
+            - 'packages' should be a list of operon.components.CondaPackage tuples
+            - 'channels' should be list of conda channels to temporarily access for instllation
+
+        :return: dict A dict configuring conda packages
+        """
+        return dict()
+
     def add_pipeline_args(self, parser):
         """
         Override this method.
