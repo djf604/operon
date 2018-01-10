@@ -31,9 +31,11 @@ class Command(BaseCommand):
         if pipeline_class is not None:
             # Parse the pipeline arguments and inject them into the pipeline class
             pipeline_args_parser = argparse.ArgumentParser(prog='operon run {}'.format(pipeline_name))
-            pipeline_args_parser.add_argument('--config',
+            pipeline_args_parser.add_argument('--pipeline-config',
                                               default=os.path.join(self.home_configs, '{}.json'.format(pipeline_name)),
                                               help='Path to a config file to use for this run.')
+            pipeline_args_parser.add_argument('--parsl-config',
+                                              help='Parsl config TODO')
             pipeline_class.add_pipeline_args(pipeline_args_parser)
             pipeline_class.pipeline_args = vars(pipeline_args_parser.parse_args(command_args[1:]))
 

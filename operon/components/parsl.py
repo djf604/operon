@@ -16,6 +16,9 @@ import networkx as nx
 # parsl.set_file_logger('parsl.log')
 from collections import namedtuple
 
+from operon.util import get_operon_home
+from operon.util.configs import dfk_with_config, direct_config, cycle_config_input_options
+
 SOURCE = 0
 TARGET = 1
 
@@ -26,20 +29,69 @@ class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path'))
 
 
 class ParslPipeline(BasePipeline):
+    def parsl_config(self):
+        """
+        Override this method.
+
+        This should be used with caution because it potentially removes portability.
+        :return: dict Parsl configuration as a default for this pipeline
+        """
+        return None
+
+    def _get_dfk(self, pipeline_args, pipeline_config):
+        # 1) Config defined at runtime on the command line
+        if pipeline_args['parsl_config'] is not None:
+            loaded_config = cycle_config_input_options(pipeline_args['parsl_config'])
+            if loaded_config is not None:
+                print('Option 1')
+                return loaded_config
+
+        # 2) Config defined for this pipeline in the pipeline configuration
+        if pipeline_config.get('parsl_config'):
+            loaded_config = cycle_config_input_options(pipeline_config['parsl_config'])
+            if loaded_config is not None:
+                print('Option 2')
+                return loaded_config
+
+        # 3) Config defined as an installation default, if all above options are absent
+        # A stub parsl configuration is provided by init, but the user must manually make changes
+        # to the stub for this method to be activated, otherwise it will be ignored
+        if os.path.isfile(os.path.join(get_operon_home(), 'parsl_config.json')):
+            init_parsl_config_filepath = os.path.join(get_operon_home(), 'parsl_config.json')
+            with open(init_parsl_config_filepath) as init_parsl_config_json:
+                try:
+                    init_parsl_config = json.load(init_parsl_config_json)
+                    if 'use' not in init_parsl_config:
+                        print('Option 3')
+                        return direct_config(init_parsl_config)
+                except json.JSONDecodeError:
+                    print('Malformed JSON on option 3, trying next option')
+                except ValueError:
+                    print('Bad Parsl config, trying the next option')
+
+        # 4) Config defined by the pipeline developer as a default, if no user config exists
+        if self.parsl_config():
+            print('Option 4')
+            try:
+                return direct_config(self.parsl_config())
+            except ValueError:
+                pass  # Silently fail, move on to next option
+
+        # 5) Config used if all above are absent, always run as a Thread Pool with 8 workers
+        print('Option 5')
+        return dfk_with_config['basic-threads-8']()
+
+
     def _run_pipeline(self, pipeline_args, pipeline_config):
         self.run_pipeline(pipeline_args, pipeline_config)
         workflow_graph = self._assemble_graph(ParslAppBlueprint._blueprints.values())
-        pipeline_futs = self._register_workflow(workflow_graph)
+        pipeline_futs = self._register_workflow(workflow_graph, self._get_dfk(pipeline_args, pipeline_config))
 
         # Wait for all apps to complete
         for fut in pipeline_futs:
             fut.result()
 
-    def _register_workflow(self, workflow_graph):
-        # Set up parsl
-        workers = ThreadPoolExecutor(max_workers=8)
-        dfk = DataFlowKernel(executors=[workers])
-
+    def _register_workflow(self, workflow_graph, dfk):
         # Instantiate the App Factories
         @App('python', dfk)
         def _pythonapp(func_, func_args, func_kwargs, **kwargs):
@@ -156,7 +208,7 @@ class ParslPipeline(BasePipeline):
             json_digraph['edges'].append(
                 {'data': {'source': os.path.basename(edge[SOURCE]), 'target': os.path.basename(edge[TARGET])}}
             )
-        print(json.dumps(json_digraph, indent=2))
+        # print(json.dumps(json_digraph, indent=2))
 
         return digraph
 

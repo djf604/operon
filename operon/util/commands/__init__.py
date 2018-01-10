@@ -1,7 +1,6 @@
 import os
-
-from operon.util import load_pipeline_file
-
+# from operon.util import load_pipeline_file
+import operon.util
 
 class BaseCommand(object):
     operon_home = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
@@ -14,10 +13,10 @@ class BaseCommand(object):
 
         # Look for pipeline in installed directory first
         if os.path.isfile(pipeline_filepath):
-            return load_pipeline_file(pipeline_filepath).Pipeline()
+            return operon.util.load_pipeline_file(pipeline_filepath).Pipeline()
         # Check to see if pipeline name is a full path to pipeline
         elif os.path.isfile(pipeline_name):
-            return load_pipeline_file(pipeline_name).Pipeline()
+            return operon.util.load_pipeline_file(pipeline_name).Pipeline()
         # If none of the above, return None
         return None
 
