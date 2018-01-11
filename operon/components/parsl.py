@@ -1,23 +1,41 @@
 import os
 import json
-from copy import copy, deepcopy
-from functools import wraps
-import inspect
-import uuid
+import logging
+import tempfile
+from datetime import datetime
+from copy import copy
+from collections import namedtuple
 
-import six
-from parsl import DataFlowKernel, ThreadPoolExecutor, App
+from parsl import App
+import networkx as nx
 
 from operon.components import BasePipeline
-
-import networkx as nx
+from operon.util import get_operon_home
+from operon.util.configs import dfk_with_config, direct_config, cycle_config_input_options
 
 # import parsl
 # parsl.set_file_logger('parsl.log')
-from collections import namedtuple
 
 SOURCE = 0
 TARGET = 1
+logger = logging.getLogger('operon.main')
+
+
+def setup_logger(logs_dir=None):
+    logger = logging.getLogger('operon.main')
+    logger.setLevel(logging.DEBUG)
+    logformat = logging.Formatter(fmt='[{asctime}|{name}] > {message}', datefmt='%d%b%Y %H:%M:%S', style='{')
+
+    if logs_dir is not None:
+        operon_log_filename = 'run_{}.operon.log'.format(datetime.now().strftime('%d%b%Y_%H%M%S'))
+        logfilehandler = logging.FileHandler(os.path.join(logs_dir, operon_log_filename))
+        logfilehandler.setFormatter(logformat)
+        logger.addHandler(logfilehandler)
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(logformat)
+    logger.addHandler(ch)
+
 
 
 class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path')):
@@ -26,20 +44,93 @@ class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path'))
 
 
 class ParslPipeline(BasePipeline):
+    _pipeline_run_temp_dir = tempfile.TemporaryDirectory(suffix='__operon')
+
+    def parsl_config(self):
+        """
+        Override this method.
+
+        This should be used with caution because it potentially reduces portability.
+        :return: dict Parsl configuration as a low-precedence default for this pipeline
+        """
+        return None
+
+    def _get_dfk(self, pipeline_args, pipeline_config):
+        # 1) Config defined at runtime on the command line
+        if pipeline_args['parsl_config'] is not None:
+            loaded_config = cycle_config_input_options(pipeline_args['parsl_config'])
+            if loaded_config is not None:
+                logger.info('Loaded Parsl config from command line arguments')
+                return loaded_config
+
+        # 2) Config defined for this pipeline in the pipeline configuration
+        if pipeline_config.get('parsl_config'):
+            loaded_config = cycle_config_input_options(pipeline_config['parsl_config'])
+            if loaded_config is not None:
+                logger.info('Loaded Parsl config from pipeline config')
+                return loaded_config
+
+        # 3) Config defined as an installation default, if all above options are absent
+        # A stub parsl configuration is provided by init, but the user must manually make changes
+        # to the stub for this method to be activated, otherwise it will be ignored
+        if os.path.isfile(os.path.join(get_operon_home(), 'parsl_config.json')):
+            init_parsl_config_filepath = os.path.join(get_operon_home(), 'parsl_config.json')
+            with open(init_parsl_config_filepath) as init_parsl_config_json:
+                try:
+                    init_parsl_config = json.load(init_parsl_config_json)
+                    if 'use' not in init_parsl_config:
+                        logger.info('Loaded Parsl config from installation default')
+                        return direct_config(init_parsl_config)
+                except json.JSONDecodeError:
+                    logger.error('Malformed JSON when loading from installation default, trying next option')
+                except ValueError:
+                    logger.error('Bad Parsl config when loading from installation default, trying the next option')
+
+        # 4) Config defined by the pipeline developer as a default, if no user config exists
+        if self.parsl_config():
+            logger.info('Loaded Parsl config from pipeline default')
+            try:
+                return direct_config(self.parsl_config())
+            except ValueError:
+                pass  # Silently fail, move on to next option
+
+        # 5) Config used if all above are absent, always run as a Thread Pool with 8 workers
+        logger.info('Loaded Parsl config using package default (8 basic threads)')
+        return dfk_with_config['basic-threads-8']()
+
     def _run_pipeline(self, pipeline_args, pipeline_config):
+        # Set up logs dir
+        os.makedirs(pipeline_args['logs_dir'], exist_ok=True)
+        setup_logger(pipeline_args['logs_dir'])
+        logger.info('Started pipeline run')
+
+        # Run the pipeline to populate Software instances and construct the workflow graph
         self.run_pipeline(pipeline_args, pipeline_config)
         workflow_graph = self._assemble_graph(ParslAppBlueprint._blueprints.values())
-        pipeline_futs = self._register_workflow(workflow_graph)
+
+        # Register apps and data with Parsl, get all app futures
+        pipeline_futs = self._register_workflow(workflow_graph, self._get_dfk(pipeline_args, pipeline_config))
 
         # Wait for all apps to complete
         for fut in pipeline_futs:
             fut.result()
 
-    def _register_workflow(self, workflow_graph):
-        # Set up parsl
-        workers = ThreadPoolExecutor(max_workers=8)
-        dfk = DataFlowKernel(executors=[workers])
+        # Inject captured app stdout and stderr into logs
+        for captured_output in os.listdir(ParslPipeline._pipeline_run_temp_dir.name):
+            capture_output_path = os.path.join(ParslPipeline._pipeline_run_temp_dir.name, captured_output)
+            app_name, stream = os.path.splitext(captured_output)
+            captured_output_content = open(capture_output_path).read()
+            if captured_output_content:
+                logger.debug('Output from {stream} stream of {app_name}:\n{msg}'.format(
+                    stream=stream[1:],  # Get extension of captured stream, without period
+                    app_name=app_name,
+                    msg=captured_output_content
+                ))
 
+        # Cleanup temporary directory
+        # pipeline_run_temp_dir.cleanup()
+
+    def _register_workflow(self, workflow_graph, dfk):
         # Instantiate the App Factories
         @App('python', dfk)
         def _pythonapp(func_, func_args, func_kwargs, **kwargs):
@@ -51,7 +142,7 @@ class ParslPipeline(BasePipeline):
 
         @App('bash', dfk)
         def _cleanup(*args, **kwargs):
-            return 'rm {}'.format(' '.join(args))
+            return 'rm {} 2>/dev/null || exit 0'.format(' '.join(args))
 
         # Some data containers
         app_futures, data_futures = list(), dict()
@@ -156,7 +247,7 @@ class ParslPipeline(BasePipeline):
             json_digraph['edges'].append(
                 {'data': {'source': os.path.basename(edge[SOURCE]), 'target': os.path.basename(edge[TARGET])}}
             )
-        print(json.dumps(json_digraph, indent=2))
+        # print(json.dumps(json_digraph, indent=2))
 
         return digraph
 
@@ -180,6 +271,7 @@ class Software(ParslAppBlueprint):
     def __init__(self, name, path):
         self.name = name
         self.path = path
+        self.basename = os.path.basename(path).replace(' ', '_')
 
         # Add path to class collection of software paths
         Software._software_paths.add(self.path)
@@ -204,7 +296,7 @@ class Software(ParslAppBlueprint):
 
     def prep(self, *args, **kwargs):
         app_blueprint = {
-            'id': '__app__{}'.format(ParslAppBlueprint.get_id()),
+            'id': '{}_{}'.format(self.basename, ParslAppBlueprint.get_id()),
             'type': 'bash',
             'name': kwargs.get('action', self.path),
             'cmd': '',
@@ -262,6 +354,20 @@ class Software(ParslAppBlueprint):
             # TODO stdout and stderr
 
         app_blueprint['cmd'] = ' '.join(cmd)
+
+        # If either of stdout or stderr were not explicitly set by a Redirect,
+        # set it to go to a temporary file for later injection into the main logs
+        if not app_blueprint['stdout']:
+            app_blueprint['stdout'] = os.path.join(
+                ParslPipeline._pipeline_run_temp_dir.name,
+                '{}.stdout'.format(app_blueprint['id'])
+            )
+        if not app_blueprint['stderr']:
+            app_blueprint['stderr'] = os.path.join(
+                ParslPipeline._pipeline_run_temp_dir.name,
+                '{}.stderr'.format(app_blueprint['id'])
+            )
+
         # print('Created app blueprint: {}'.format(app_blueprint))
         return app_blueprint
 
@@ -354,7 +460,7 @@ class Redirect(object):
     }
 
     def __init__(self, stream=STDOUT, dest='out.txt'):
-        if isinstance(stream, six.string_types):
+        if isinstance(stream, str):
             stream = Redirect.token_convert(str(stream).strip())
 
         self.stream = stream
@@ -369,7 +475,7 @@ class Redirect(object):
         if type(token) == str:
             return Redirect._convert[token]
         elif type(token) == int:
-            reverse_convert = {v: k for k, v in six.iteritems(Redirect._convert)}
+            reverse_convert = {v: k for k, v in Redirect._convert.items()}
             return reverse_convert[token]
         return Redirect.STDOUT
 
@@ -387,7 +493,7 @@ class CodeBlock(ParslAppBlueprint):
 
     @staticmethod
     def register(func, args=None, kwargs=None, inputs=None, outputs=None, stdout=None, stderr=None, **_kwargs):
-        blueprint_id = '__app__{}'.format(ParslAppBlueprint.get_id())
+        blueprint_id = '{}_{}'.format(func.__name__, ParslAppBlueprint.get_id())
         ParslAppBlueprint._blueprints[blueprint_id] = {
             'id': blueprint_id,
             'type': 'python',

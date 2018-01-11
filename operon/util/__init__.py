@@ -4,9 +4,28 @@ import traceback
 import argparse
 import json
 from importlib import import_module
+import importlib.util
 
 import pkgutil
 import operon.util.commands
+
+
+def get_operon_home(root=False):
+    operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
+    return operon_home_root if root else os.path.join(operon_home_root, '.operon')
+
+
+def load_pipeline_file(pipeline_filepath):
+    """
+    This only works in Python 3.5+
+    Taken from https://stackoverflow.com/a/67692/1539628
+    :param pipeline_filepath:
+    :return:
+    """
+    spec = importlib.util.spec_from_file_location('operon.pipeline', pipeline_filepath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class OperonState(object):
@@ -51,18 +70,6 @@ def print_unrecognized_command(subcommand):
     sys.stderr.write('Unrecognized command: {}\n\n'.format(subcommand))
     sys.stderr.write('Use one of the following:\n')
     print_help_text()
-
-
-def add_common_pipeline_args(parser):
-    parser.add_argument('--reads', required=True, action='append',
-                        help=('Raw reads to process with this pipeline. Paired-end reads ' +
-                              'can be joined together with a colon (:). Specify this option ' +
-                              'multiple times to process multiple raw reads files.\nEx ' +
-                              'paired-end: --reads read1.fastq:read2.fastq\nEx single-end: ' +
-                              '--reads sample1.fastq sample1.extra.fastq'))
-    parser.add_argument('--output', required=True,
-                        help='Directory to store all results of this pipeline in.')
-    parser.add_argument('--log')
 
 
 def get_operon_subcommands(classes=False):

@@ -518,7 +518,7 @@ class BasePipeline(object):
 
     def _parse_config(self):
         try:
-            with open(self.pipeline_args['config']) as config:
+            with open(self.pipeline_args['pipeline_config']) as config:
                 self.pipeline_config = json.loads(config.read())
         except IOError:
             sys.stdout.write('Fatal Error: Config file at {} does not exist.\n'.format(
