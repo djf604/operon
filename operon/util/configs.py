@@ -1,8 +1,12 @@
 import os
 import json
 from functools import partial
+import logging
+
 from parsl import ThreadPoolExecutor, DataFlowKernel
 from parsl.execution_provider.errors import BadConfig
+
+logger = logging.getLogger('operon.main')
 
 
 def cycle_config_input_options(user_input):
@@ -16,19 +20,23 @@ def cycle_config_input_options(user_input):
             try:
                 return direct_config(json.load(config_json))
             except json.JSONDecodeError:
-                print('Malformed JSON on option 1/2, trying next option')
+                logger.error('Malformed JSON when loading from command line arguments '
+                             'or pipeline config, trying next option')
             except ValueError:
-                print('Bad Parsl configuration, trying next option')
+                logger.error('Bad Parsl configuration when loading from command line '
+                             'arguments or pipeline config, trying next option')
 
     # Try to load the input directly as JSON
     try:
         return direct_config(json.loads(user_input))
     except json.JSONDecodeError:
-        print('Malformed JSON on option 1/2, trying next option')
+        logger.error('Malformed JSON when loading from command line arguments '
+                     'or pipeline config, trying next option')
     except ValueError:
-        print('Bad Parsl configuration, trying next option')
+        logger.error('Bad Parsl configuration when loading from command line '
+                     'arguments or pipeline config, trying next option')
 
-    # If all the above options failed
+    # If all the above options failed, return None so other options will be tried
     return None
 
 
