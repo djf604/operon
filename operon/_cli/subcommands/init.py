@@ -1,6 +1,5 @@
 import os
 import sys
-import errno
 import argparse
 import inspect
 import json
@@ -8,20 +7,12 @@ import re
 import subprocess
 from datetime import datetime
 
-from operon.util.commands import BaseCommand
-import operon._completer
-from operon.util.configs import init_config_stub
+import operon
+from operon._cli import _completer
+from operon._cli.subcommands import BaseSubcommand
+from operon._util.configs import init_config_stub
 
 ARGV_OPERON_HOME_ROOT = 0
-
-
-# Based off https://stackoverflow.com/a/600612/1539628
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as os_error:
-        if os_error.errno != errno.EEXIST or not os.path.isdir(path):
-            raise
 
 
 def create_or_append_to_file(comment, payload, filepath):
@@ -72,8 +63,8 @@ def make_operon_home(operon_home_root):
     try:
         # Make directory tree
         sys.stderr.write('Creating directory tree\n')
-        mkdir_p(operon_root_pipelines)
-        mkdir_p(operon_root_configs)
+        os.makedirs(operon_root_pipelines, exist_ok=True)
+        os.makedirs(operon_root_configs, exist_ok=True)
 
         # Add __init__.py to make modules
         sys.stderr.write('Initializing python modules\n')
@@ -84,7 +75,7 @@ def make_operon_home(operon_home_root):
         sys.stderr.write('Installing auto-completer script\n')
         operon_completer_path = os.path.join(operon_home_root, '.operon', '.operon_completer')
         with open(operon_completer_path, 'w') as operon_completer:
-            operon_completer.write(inspect.getsource(operon._completer))
+            operon_completer.write(inspect.getsource(_completer))
         os.chmod(operon_completer_path, 0o755)
 
         # Register completion program in ~/.bash_completion
@@ -150,7 +141,7 @@ def usage():
     return 'operon init [operon_home_root]'
 
 
-class Command(BaseCommand):
+class Subcommand(BaseSubcommand):
     def help_text(self):
         return ('Initializes Operon at the given location.'
                 'If no path is given, the user home directory is used. For any location other than '
@@ -158,12 +149,12 @@ class Command(BaseCommand):
                 'needs to set a OPERON_HOME environment variable manually for Operon '
                 'to use the newly created directory.')
 
-    def run(self, command_args):
+    def run(self, subcommand_args):
         parser = argparse.ArgumentParser(prog='operon init', usage=usage(), description=self.help_text())
         parser.add_argument('operon-home-root', default='', nargs='?',
                             help=('Operon will initialize in this directory. '
                                   'Defaults to the user home directory.'))
-        args = vars(parser.parse_args(command_args))
+        args = vars(parser.parse_args(subcommand_args))
 
         # If input is help, display help message
         if args['operon-home-root'].strip().lower() == 'help':
