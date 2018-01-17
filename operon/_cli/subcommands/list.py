@@ -1,19 +1,20 @@
 import os
 import sys
 import argparse
-from operon.util.commands import BaseCommand
+
+from operon._cli.subcommands import BaseSubcommand
 
 BASENAME = 0
 EXTENTION = 1
 
 
-class Command(BaseCommand):
+class Subcommand(BaseSubcommand):
     def help_text(self):
         return 'Lists installed pipelines in the default Operon home directory.'
 
-    def run(self, command_args):
+    def run(self, subcommand_args):
         # Get argparse help funtionality
-        argparse.ArgumentParser(prog='operon list', description=self.help_text()).parse_args(command_args)
+        argparse.ArgumentParser(prog='operon list', description=self.help_text()).parse_args(subcommand_args)
 
         sys.stderr.write('Installed pipelines (in {}):\n\n'.format(self.home_pipelines))
 

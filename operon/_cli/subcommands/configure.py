@@ -5,9 +5,8 @@ import json
 import readline
 import subprocess
 import re
-from operon.util.commands import BaseCommand
 
-import six.moves
+from operon._cli.subcommands import BaseSubcommand
 
 ARGV_PIPELINE_NAME = 0
 ARGV_FIRST_ARGUMENT = 0
@@ -49,35 +48,32 @@ def configure(config_dict, current_config, breadcrumbs, blank=False):
         else:
             if not blank:
                 prompt = '|'.join((breadcrumbs, config_dict[key])).strip().strip(':')
-                config_dict[key] = (six.moves.input(prompt + ' [{}]: '.format(current_config.get(key, ''))) or
+                config_dict[key] = (input(prompt + ' [{}]: '.format(current_config.get(key, ''))) or
                                     current_config.get(key, ''))
             else:
                 config_dict[key] = ''
 
 
-
-class Command(BaseCommand):
+class Subcommand(BaseSubcommand):
     @staticmethod
     def usage():
         return 'operon configure <pipeline-name> [-h] [--location LOCATION] [--blank]'
 
-
-
     def help_text(self):
         return 'Create a configuration file for a pipeline.'
 
-    def run(self, command_args):
+    def run(self, subcommand_args):
         parser = argparse.ArgumentParser(prog='operon configure', usage=self.usage(), description=self.help_text())
         parser.add_argument('--location', help=('Path to which to save this config file. ' +
                                                 'Defaults to install directory.'))
         parser.add_argument('--blank', action='store_true',
                             help='Skip configuration and create a blank configuration file.')
 
-        if not command_args or command_args[ARGV_FIRST_ARGUMENT].lower() in ['-h', '--help', 'help']:
+        if not subcommand_args or subcommand_args[ARGV_FIRST_ARGUMENT].lower() in ['-h', '--help', 'help']:
             parser.print_help()
             sys.exit(EXIT_CMD_SUCCESS)
 
-        pipeline_name = command_args[ARGV_PIPELINE_NAME]
+        pipeline_name = subcommand_args[ARGV_PIPELINE_NAME]
         pipeline_class = self.get_pipeline_class(pipeline_name)
 
         if pipeline_class is not None:
@@ -90,14 +86,14 @@ class Command(BaseCommand):
                                                   'Defaults to install directory.'))
             config_args_parser.add_argument('--blank', action='store_true',
                                             help='Skip configuration and create a blank configuration file.')
-            configure_args = vars(config_args_parser.parse_args(command_args[1:]))
+            configure_args = vars(config_args_parser.parse_args(subcommand_args[1:]))
 
             save_location = configure_args['location']
             is_blank = configure_args['blank']
 
             # If this config already exists, prompt user before overwrite
             if os.path.isfile(save_location):
-                overwrite = six.moves.input('Configuration for {} already exists at {}, overwrite? [y/n] '.format(
+                overwrite = input('Configuration for {} already exists at {}, overwrite? [y/n] '.format(
                     pipeline_name,
                     save_location
                 ))

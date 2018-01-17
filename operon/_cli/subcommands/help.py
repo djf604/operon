@@ -1,7 +1,7 @@
-from operon.util.commands import BaseCommand
+from operon._cli.subcommands import BaseSubcommand
 
 
-class Command(BaseCommand):
+class Subcommand(BaseSubcommand):
     """
     This class only exists so argparse will display help as
     a subcommand.
@@ -9,5 +9,5 @@ class Command(BaseCommand):
     def help_text(self):
         return 'Show this help message and exit.'
 
-    def run(self, command_args):
+    def run(self, subcommand_args):
         return

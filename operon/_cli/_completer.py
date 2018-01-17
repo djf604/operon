@@ -4,7 +4,7 @@ import sys
 import subprocess
 import json
 try:
-    from operon.util import get_operon_subcommands
+    from operon._cli.subcommands import get_operon_subcommands
 except ImportError:
     sys.exit()
 
@@ -58,4 +58,3 @@ def completer():
 
 if __name__ == '__main__':
     completer()
-
