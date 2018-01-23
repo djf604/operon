@@ -15,9 +15,8 @@ Operon Documentation
 
 
 
-Indices and tables
-==================
+Parsl
+=====
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+Operon is powered by Parsl. To get an understand of how to most efficiently run Operon pipelines, check out the
+`Parsl documentation <http://parsl.readthedocs.io/en/latest/>`_.

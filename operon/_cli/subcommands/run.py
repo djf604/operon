@@ -40,7 +40,7 @@ class Subcommand(BaseSubcommand):
             pipeline_args_parser.add_argument('--logs-dir', default='.', help='Path to a directory to store log files')
 
             # Get custom arguments from the Pipeline
-            pipeline_class.add_pipeline_args(pipeline_args_parser)
+            pipeline_class.arguments(pipeline_args_parser)
             pipeline_class.pipeline_args = vars(pipeline_args_parser.parse_args(subcommand_args[1:]))
 
             # Parse pipeline config and run pipeline
