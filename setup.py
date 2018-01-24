@@ -12,9 +12,11 @@ setup(
     url='https://github.com/djf604/operon',
     download_url='https://github.com/djf604/operon/tarball/{}'.format(operon.__version__),
     packages=find_packages(),
-    install_requires=['pathos>=0.2.1', 'six', 'libsubmit', 'parsl', 'networkx==2.0'],
+    install_requires=['pathos>=0.2.1', 'six', 'libsubmit', 'parsl==0.3.1', 'networkx==2.0'],
     entry_points={
-        'console_scripts': ['operon = operon.util:execute_from_command_line']
+        'console_scripts': [
+            'operon = operon._util:execute_from_command_line'
+        ]
     },
     classifiers=[
         'Development Status :: 3 - Alpha',

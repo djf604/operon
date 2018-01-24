@@ -2,26 +2,27 @@ import sys
 import os
 import argparse
 import json
-from operon.util.commands import BaseCommand
+
+from operon._cli.subcommands import BaseSubcommand
 
 ARGV_PIPELINE_NAME = 0
 EXIT_CMD_SUCCESS = 0
 EXIT_CMD_SYNTAX_ERROR = 2
 
 
-class Command(BaseCommand):
-    @staticmethod
-    def usage():
-        return 'operon show <pipeline-line> [-h]'
+def usage():
+    return 'operon show <pipeline-line> [-h]'
 
+
+class Subcommand(BaseSubcommand):
     def help_text(self):
         return ('Show information about a Operon installed pipeline, including parameters, the ' +
                 'configuration dictionary, and the current default configuration, if it exists.')
 
-    def run(self, command_args):
-        parser = argparse.ArgumentParser(prog='operon show', usage=self.usage(), description=self.help_text())
+    def run(self, subcommand_args):
+        parser = argparse.ArgumentParser(prog='operon show', usage=usage(), description=self.help_text())
         parser.add_argument('pipeline-name', help='Operon pipeline to show.')
-        pipeline_name = vars(parser.parse_args(command_args))['pipeline-name']
+        pipeline_name = vars(parser.parse_args(subcommand_args))['pipeline-name']
         if pipeline_name.lower() == 'help':
             parser.print_help()
             sys.exit(EXIT_CMD_SUCCESS)
@@ -35,7 +36,7 @@ class Command(BaseCommand):
         # Show pipeline arguments
         show_parser = argparse.ArgumentParser(prog='operon run {}'.format(pipeline_name),
                                               description=pipeline_class.description())
-        pipeline_class.add_pipeline_args(show_parser)
+        pipeline_class.arguments(show_parser)
         show_parser.print_help()
 
         # Show pipeline dependencies
