@@ -9,9 +9,6 @@ import operon._cli.subcommands
 from operon._cli.subcommands import fetch_subcommand_class, get_operon_subcommands
 
 
-
-
-
 def setup_logger(logs_dir=None):
     logger = logging.getLogger('operon.main')
     logger.setLevel(logging.DEBUG)

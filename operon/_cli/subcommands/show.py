@@ -36,7 +36,7 @@ class Subcommand(BaseSubcommand):
         # Show pipeline arguments
         show_parser = argparse.ArgumentParser(prog='operon run {}'.format(pipeline_name),
                                               description=pipeline_class.description())
-        pipeline_class.add_pipeline_args(show_parser)
+        pipeline_class.arguments(show_parser)
         show_parser.print_help()
 
         # Show pipeline dependencies

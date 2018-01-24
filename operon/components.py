@@ -14,9 +14,6 @@ from operon._util.home import get_operon_home
 from operon._util.configs import dfk_with_config, direct_config, cycle_config_input_options
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
 
-# import parsl
-# parsl.set_file_logger('parsl.log')
-
 SOURCE = 0
 TARGET = 1
 EXIT_ERROR = 1
@@ -283,7 +280,7 @@ class ParslPipeline(object):
         logger.info('Started pipeline run')
 
         # Run the pipeline to populate Software instances and construct the workflow graph
-        self.run_pipeline(pipeline_args, pipeline_config)
+        self.pipeline(pipeline_args, pipeline_config)
         workflow_graph = self._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
         # Register apps and data with Parsl, get all app futures
@@ -337,10 +334,10 @@ class ParslPipeline(object):
                     logger.error('Bad Parsl config when loading from installation default, trying the next option')
 
         # 4) Config defined by the pipeline developer as a default, if no user config exists
-        if self.parsl_config():
+        if self.parsl_configuration():
             logger.info('Loaded Parsl config from pipeline default')
             try:
-                return direct_config(self.parsl_config())
+                return direct_config(self.parsl_configuration())
             except ValueError:
                 pass  # Silently fail, move on to next option
 
@@ -489,7 +486,7 @@ class ParslPipeline(object):
     def _print_dependencies(self):
         sys.stdout.write('\n'.join(self.dependencies()) + '\n')
 
-    def parsl_config(self):
+    def parsl_configuration(self):
         """
         Override this method.
 
@@ -522,13 +519,13 @@ class ParslPipeline(object):
         The returned dictionary should have a key 'packages' and an
         optional key 'channels'.
             - 'packages' should be a list of operon.components.CondaPackage tuples
-            - 'channels' should be list of conda channels to temporarily access for instllation
+            - 'channels' should be list of conda channels to temporarily access for installation
 
         :return: dict A dict configuring conda packages
         """
         return dict()
 
-    def add_pipeline_args(self, parser):
+    def arguments(self, parser):
         """
         Override this method.
         Adds arguments to this pipeline using the argparse.add_argument() method. The parser
@@ -537,7 +534,7 @@ class ParslPipeline(object):
         """
         pass
 
-    def configure(self):
+    def configuration(self):
         """
         Override this method.
         Dictionary representation of the JSON object that will be used to configure this
@@ -554,11 +551,11 @@ class ParslPipeline(object):
         """
         return dict()
 
-    def run_pipeline(self, pipeline_args, pipeline_config):
+    def pipeline(self, pipeline_args, pipeline_config):
         """
         Override this method.
         The logic of the pipeline will be here. The arguments are automatically populated with the
-        user arguments to the pipeline (those added with the method add_pipeline_args()) as well as
+        user arguments to the pipeline (those added with the method self.arguments()) as well as
         the configuration for the pipeline (as a dictionary of the form returned by the method config(),
         but with user input values in place of terminal strings.)
         :param pipeline_args: dict Populated dictionary of user arguments

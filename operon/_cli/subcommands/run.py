@@ -34,13 +34,13 @@ class Subcommand(BaseSubcommand):
             pipeline_args_parser = argparse.ArgumentParser(prog='operon run {}'.format(pipeline_name))
             pipeline_args_parser.add_argument('--pipeline-config',
                                               default=os.path.join(self.home_configs, '{}.json'.format(pipeline_name)),
-                                              help='Path to a config file to use for this run.')
+                                              help='Path to a config file to use for this run')
             pipeline_args_parser.add_argument('--parsl-config',
-                                              help='Parsl config TODO')
+                                              help='Path to a JSON file containing a Parsl config')
             pipeline_args_parser.add_argument('--logs-dir', default='.', help='Path to a directory to store log files')
 
             # Get custom arguments from the Pipeline
-            pipeline_class.add_pipeline_args(pipeline_args_parser)
+            pipeline_class.arguments(pipeline_args_parser)
             pipeline_class.pipeline_args = vars(pipeline_args_parser.parse_args(subcommand_args[1:]))
 
             # Parse pipeline config and run pipeline
