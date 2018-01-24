@@ -85,7 +85,12 @@ To run an installed pipeline::
                                  [--logs-dir DIR] [pipeline-options]
 
 The set of accepted ``pipeline-options`` is defined by the pipeline itself and are meant to be values that change from
-run to run, such as input files, metadata, etc.
+run to run, such as input files, metadata, etc. Three options will always exist:
+
+* ``pipeline-config`` can point to a pipeline config to use for this run only
+* ``parsl-config`` can point to a file containing JSON that represents a Parsl config to use for this run only
+* ``logs-dir`` can point to a location where log files from this run should be deposited; if it doesn't exist, it
+  will be created; defaults to the currect directory
 
 When an Operon pipeline is run, under the hood it creates a Parsl workflow which can be run in many different ways
 depending on the accompanying Parl configuration. This means that while the definition for a pipeline run with the

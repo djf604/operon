@@ -4,7 +4,10 @@ Building Pipelines
 Dependency Workflow Concepts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Operon pipelines don't actually run anything at all; instead, they define a workflow.
+Operon pipelines don't actually run anything at all; instead, they define a workflow. Parsl then uses the defined
+workflow to run the pipeline in a highly-efficient and configuration manner. Operon simply acts as an abstraction to
+Parsl so the developer need only what about what software needs to be run, and at what point in the pipeline it
+has all the information it needs to run successfully.
 
 There are two main components to a dependency workflow graph:
 
@@ -89,7 +92,6 @@ TODO I'm actually not sure about that last one
 
 Dependencies
 ############
-
 Pipeline dependencies are Python packages which the pipeline logic use. Dependencies are provided as a list of strings,
 where each string is the name of a package available on PyPI and suitable to be feed directly into ``pip``.
 
@@ -114,7 +116,6 @@ them manually into a Python virtual environment.
 
 Conda/Bioconda
 ##############
-
 Executables provided by Conda/Bioconda can be installed and injected into the user's pipeline configuration, provided
 the user has Miniconda installed and in PATH. Executables are defined by a list of ``CondaPackage`` tuples, with the
 option to override the default conda channels that Operon loads.
@@ -154,7 +155,6 @@ To see which executables are offered by Bioconda, please refer to their `package
 
 Parsl Configuration
 ###################
-
 A default Parsl configuration can be provided in the event the user doesn't provide any higher-precendence Parsl
 configuration. The returned ``dict`` will be fed directly to Parsl before execution.
 
@@ -187,22 +187,186 @@ To better understand Parsl configuration, please refer to `their documentation
 
 Pipeline Configuration
 ######################
+The pipeline configuration contains attributes passed into the pipeline logic which may change from platform to
+platform, but generally won't change from run to run. For example, paths to executables for software, paths to
+reference files, number of threads to use, etc will vary by platform but will be the same for every run.
 
-Configuration values which may change from platform to platform, but won't change from run to run
+.. code-block:: python
+
+    def configuration(self):
+        return {
+            'software1': {
+                'path': 'Full path to software1',
+                'threads': 'Run software1 with this many threads'
+            },
+            'software2': {
+                'path': 'Full path to software2',
+                'genome_reference': 'Path to genome reference'
+            }
+        }
+
+The returned configuration dictionary may nest arbitrarily deep. All values must be either a dictionary or a string.
+Considering the configuration dictionary as a tree, all string values must by definition be leafs, and so terminate a
+branch. During configuration of the pipeline using ``operon configure``, the user is presented with a prompt for each
+leaf, and the user input is gathered and stored in place of the prompt string.
+
+.. note::
+
+    The nesting of dictionaries inside the configuration dictionary is purely for the developer's organizational
+    convenience; the user will never see anything but prompts defined by the string values.
+
+For the above example configuration, the user will see and interactively fill in the prompts:
+
+.. code-block:: text
+
+    $ operon configure pipeline-name
+    > Full path to software1: (User enters) /path/to/soft1
+    > Run software1 with this many threads: (User enters) 8
+    > Full path to software2: (User enters) /path/to/soft2
+    > Path to genome reference: (User enters) /path/to/genome
+
+The input from the user is stored in the ``.operon`` folder, so the next time the pipeline is run with this
+configuration it will be made available in the ``pipeline_config`` parameter:
+
+.. code-block:: python
+
+    # Contents of pipeline_config
+    {
+        'software1': {
+            'path': '/path/to/soft1',
+            'threads': '8'
+        },
+        'software2': {
+            'path': '/path/to/soft2',
+            'genome_reference': '/path/to/genome'
+        }
+    }
+
+So for any software which needs access to a genome reference, the path can be passed to the software as
+``pipeline_config['software2']['genome_reference']``.
 
 Pipeline Arguments
 ##################
+The pipeline arguments are attributes that will change from run to run and are specified by the user as command line
+arguments on a per-run basis. Pipeline arguments are added by modifying the ``argparse.ArgumentParser`` object passed
+into ``self.arguments()``; refer to the `documentation <https://docs.python.org/3/library/argparse.html>`_ for
+``argparse`` for futher details on how pipeline arguments can be gathered.
 
-Arguments given on the command line; values which will change from run to run
+.. code-block:: python
 
+    def arguments(self, parser):
+        parser.add_argument('--output-dir', help='Path to output directory')
+        parser.add_argument('--fastqs', nargs='*', help='Paths to all input fastq files')
+        parser.add_argument('--run-name', default='run001', help='Name of this run')
+        # Nothing needs to be returned since parser is modified in place
+
+Added arguments are exposed to the user when running ``operon run``, according to the rules of the ``argparse`` module.
+
+.. code-block:: text
+
+    $ operon run pipeline -h
+    > operon run pipeline [-h] [--output-dir OUTPUT_DIR] [--fastqs [FASTQS [FASTQS ...]]]
+    >                     [--run-name RUN_NAME]
+    >
+    > Pipeline description is here
+    >
+    > optional arguments:
+    >   -h, --help            show this help message and exit
+    >   -c CONFIG, --config CONFIG
+    >                         Path to a config file to use for this run.
+    >   --output-dir OUTPUT_DIR
+    >                         Path to output directory
+    >   --fastqs [FASTQS [FASTQS ...]]
+    >                         Paths to all input fastq files
+    >   --run-name RUN_NAME   Name of this run
+    >
+    $ operon run pipeline --fastqs /path/to/fastq1.fq /path/to/fastq2.fq \
+    >                     --output-dir /path/to/output --run-name run005
+
+Populated arguments are made available to the pipeline as a dictionary in the ``pipeline_args`` parameter:
+
+.. code-block:: python
+
+    # Contents for pipeline_args
+    {
+        'fastqs': ['/path/to/fastq1.fq', '/path/to/fastq2.fq'],
+        'output_dir': '/path/to/output',
+        'run_name': 'run005'
+    }
+
+.. note::
+
+    Parameters in ``argparse`` can have dashes in them (and should to separate words), but when converted to a Python
+    dictionary dashes are replaced with underscores.
+
+    Ex. ``--output-dir`` is accessed by ``pipeline_args['output_dir']``
+
+Three pipeline arguments are always injected by Operon: ``--pipeline-config``, ``--parsl-config``, and ``--logs-dir``.
+These arguments point to a pipeline config file to use for the run, a Parsl config file to use for the run, and a
+directory in which to store log files, respectively.
 
 Pipeline Logic
 ^^^^^^^^^^^^^^
+Pipeline logic defines how the workflow dependency graph should be built. The work is done in the ``pipeline()``
+method, which is given two parameters, ``pipeline_args`` and ``pipeline_config``, which are populated at runtime
+with command line arguments from the user and the stored pipeline configuration file, respectively.
+
+Executables and data are defined using a set of wrapper objects provided by Operon: this section details those
+components and how to use them.
+
+.. code-block:: python
+
+    def pipeline(self, pipeline_args, pipeline_config):
+        # All logic to build the workflow graph goes here
+
+.. note::
+
+    All the logic here is only to build the workflow dependency graph, which means that *none of the executables
+    are being run and none of the data is being produced until after* ``pipeline()`` *has completed*. Parsl only begins
+    actually running the software after it's been fed the generated workflow graph.
+
+    All statements in the ``pipeline()`` method should be for generating the workflow graph, not handling or operating
+    on data in any way. If needed, small blocks of Python can be written in a ``CodeBlock`` instance, which can be
+    integrated into the workflow graph and so will execute at the correct time.
+
+Data ``operon.components.Data``
+###############################
+A ``Data`` instance wraps a file on the filesystem and registers it as a data node in the workflow graph. Any file
+that should be considered in the workflow graph needs to be wrapped in a ``Data`` instance; often this is only
+input or output to an executable, and may not include output like log files.
+
+When passed as an argument to a ``Parameter`` object, the data must be specified as either input or output by calling
+either the ``.as_input()`` or ``.as_output()`` method. This distinction is not necessary when passing as a part of
+``extra_inputs=`` or ``extra_outputs=`` keyword arguments.
+
+``Data`` objects can be marked as temporary, which designates the underlying file on the filesystem to be deleted
+at the end of the run, by setting the ``tmp=`` parameter to ``True`` in ``.as_output()``.
+
+.. code-block:: python
+
+    from operon.components import Data
+
+    bwa.register(
+        Parameter('--fastq', Data('/path/to/fastq.fq').as_input()),
+        Parameter('--tmp-bam', Data('/path/to/tmp.bam').as_output(tmp=True)),
+        Parameter('--persistent-bam', Data('/path/to/persistent.bam').as_output())
+    )
+
+    samtools.register(
+        Parameter('--input-bam', Data('/path/to/persistent.bam').as_input())
+    )
+
+The developer does not need to keep track of individual ``Data`` instances because ``Data`` instances are uniquely
+identified by the filesystem paths they wrap; that is, if a ``Data`` instance is created as ``Data('/path/to/file')``,
+any subsequent calls to ``Data('/path/to/file')`` will not create a new ``Data`` instance but rather simply refer to
+the instance already created. Of course, the developer could store ``Data`` instances in variables and pass those
+instead, if desired.
+
+``Data`` instances can be used in-place anywhere a filesystem path would be passed; that includes both ``Parameter``
+and ``Redirect`` objects.
 
 Software ``operon.components.Software``
 #######################################
-``operon.components.Software``
-
 A ``Software`` instance is an abstraction of an executable program external to the pipeline.
 
 .. code-block:: python
@@ -215,31 +379,126 @@ A ``Software`` instance is an abstraction of an executable program external to t
 
 To register an Executable node in the workflow graph, call the ``Software`` instance's ``.register()`` method.
 ``register()`` takes any of ``Parameter``, ``Redirect``, ``Pipe``. Keyword arguments ``extra_inputs=`` and
-``extra_outputs=`` can also be given to pass in respective lists of ``Data()`` input and output that isn't defined
+``extra_outputs=`` can also be given to pass in respective lists of ``Data()`` input and output that aren't defined
 as a command line argument to the Executable.
 
 .. code-block:: python
 
     bwa.register(
-        Parameter('--fastq', Data('/path/to/fastq')),
+        Parameter('--fastq', Data('/path/to/fastq.fq')),
         Parameter('--phred', '33'),
         Redirect(stream=Redirect.STDERR, dest='/logs/bwa.log'),
         extra_inputs=[Data('/path/to/indexed_genome.fa')],
         extra_outputs=[Data('/path/to/bam')]
     )
 
-CodeBlock
-#########
+CodeBlock ``operon.components.CodeBlock``
+#########################################
+A ``CodeBlock`` instance wraps a Python function that can be passed ``Data`` instances in much the same way as a
+``Software`` instance, and so can be integrated into the workflow graph. That is, a functions wrapped in a ``CodeBlock``
+will wait to execute until all its data dependencies are available.
 
+The function wrapped by a ``CodeBlock`` instance can be defined as normal and registed with ``CodeBlock.register()``,
+where arguments and data dependencies can be defined.
 
-Parameter
-#########
+.. code-block:: python
 
-Redirect
-########
+    def get_mapped_reads_from_flagstats(star_output_bam):
+        import re
+        with open(star_output_bam + '.flagstat') as flagstats:
+            flagstats_contents = flagstats.read()
+            target_line = re.search(r'(\d+) \+ \d+ mapped', flagstats_contents)
+            if target_line is not None:
+                with open('output.txt', 'w') as output_write:
+                    output_write.write(str(int(target_line.group(1))/2) + '\n')
+    CodeBlock.register(
+        func=get_mapped_reads_from_flagstats,
+        args=[],
+        kwargs={'star_output_bam': star_output_bam},
+        inputs=[Data(star_output_bam + '.flagstat').as_input()],
+        outputs=[Data('output.txt').as_output()]
+    )
 
-Pipe
-####
+.. note::
 
-ParslPipeline
-#############
+    When a function wrapped by a ``CodeBlock`` actually executes, the scope in which it was defined will be long gone.
+    That means that any variables or data structures declared in ``pipeline()`` can't be counted on as available in
+    the body of the function. It also means that any modules the function needs to use must be explicitly imported
+    by the function, even if that module has already been imported by the pipeline document.
+
+Parameter ``operon.components.Parameter``
+#########################################
+A ``Parameter`` object represents a parameter key and value(s) passed into a ``Software`` instance.
+
+.. code-block:: python
+
+    from operon.components import Parameter
+
+    Parameter('-a', '1')  # Becomes '-a 1'
+    Parameter('--type', 'gene', 'transcript')  # Becomes '--type gene transcript'
+    Parameter('--output=/path/to/output')  # Becomes '--output=/path/to/output'
+
+When multiple ``Parameter`` instances are passed into a ``Software`` instance, order is preserved, which is important
+for positional arguments.
+
+Redirect ``operon.components.Redirect``
+#######################################
+A ``Redirect`` objects represents an output stream redirection. The keyword arguments ``stream=`` and ``dest=`` direct
+which stream(s) to redirect and to where on the filesystem, respectively.
+
+.. code-block:: python
+
+    from operon.components import Redirect
+
+    bwa.register(
+        Parameter('-a', '1000'),
+        Redirect(stream=Redirect.STDOUT, dest='/path/to/bwa.log')
+    )
+
+``stream=`` can be one of the provided constants:
+
+.. code-block:: text
+
+    Redirect.STDOUT         # >
+    Redirect.STDOUT_APPEND  # >>
+    Redirect.STDERR         # 2>
+    Redirect.STDERR_APPEND  # 2>>
+    Redirect.BOTH           # &>
+    Redirect.BOTH_APPEND    # &>>
+
+The order of ``Redirect`` objects passed to a ``Software`` instance, both in relation to each other and to other
+``Parameter`` objects, doesn't matter. However, if more than two ``Redirect`` s are passed in, only the first two
+will be considered.
+
+Pipe ``operon.components.Pipe``
+###############################
+A ``Pipe`` object represents piping the output of one executable into the input of another. The producing ``Software``
+instance is passed a ``Pipe`` object, which contains the receiving ``Software`` instance.
+
+.. code-block:: python
+
+    from operon.components import Pipe
+
+    software1.register(
+        Parameter('-a', '1'),
+        Pipe(software2.prep(
+            Parameter('-b', '2'),
+            Parameter('-c', '3')
+        ))
+    )
+    # Registers as: software1 -a 1 | software2 -b 2 -c3
+
+.. note::
+
+    Since the whole executable call needs to be registered with Parsl as a single unit, ``register()`` is only called
+    on the outermost ``Software`` instances. Within a ``Pipe`` object, the receiving ``Software`` instance should
+    instead call ``prep()``, which takes all the same parameters as ``register()``.
+
+Pipeline Logging
+^^^^^^^^^^^^^^^^
+All stream output from all Executables in the workflow graph that aren't explicitly redirected to a file with a
+``Redirect`` is gathered and output to a single pipeline log file at the end of execution.
+
+The location of this log file is defined by the user with the ``--logs-dir`` pipeline argument injected into every
+pipeline. It may be of interest to the developer to also put any explicitly redirected log files into this
+directory.

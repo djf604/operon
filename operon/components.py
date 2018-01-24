@@ -14,9 +14,6 @@ from operon._util.home import get_operon_home
 from operon._util.configs import dfk_with_config, direct_config, cycle_config_input_options
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
 
-# import parsl
-# parsl.set_file_logger('parsl.log')
-
 SOURCE = 0
 TARGET = 1
 EXIT_ERROR = 1
