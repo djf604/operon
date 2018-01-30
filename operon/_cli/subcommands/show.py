@@ -28,7 +28,7 @@ class Subcommand(BaseSubcommand):
             sys.exit(EXIT_CMD_SUCCESS)
 
         pipeline_class = self.get_pipeline_class(pipeline_name)
-        config_dictionary = pipeline_class.configure()
+        config_dictionary = pipeline_class.configuration()
 
         # Start show subcommand output
         sys.stderr.write('Operon pipeline: {}\n\n'.format(pipeline_name))

@@ -133,7 +133,7 @@ class Subcommand(BaseSubcommand):
                     pass  # If user doesn't have conda installed, do nothing and continue
 
             # Get configuration from pipeline, recursively prompt user to fill in info
-            config_dict = pipeline_class.configure()
+            config_dict = pipeline_class.configuration()
             try:
                 current_config = json.loads(open(os.path.join(self.home_configs,
                                                               '{}.json'.format(pipeline_name))).read())
