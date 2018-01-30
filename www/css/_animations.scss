@@ -1,0 +1,45 @@
+/* Small animations, based on animate.css */
+
+@mixin fade-in-mixin($x, $y) {
+  from {
+    opacity: 0;
+    -webkit-transform: translate3d($x, $y, 0);
+    transform: translate3d($x, $y, 0);
+  }
+
+  to {
+    opacity: 1;
+    -webkit-transform: none;
+    transform: none;
+  }
+}
+
+$directions: (
+  Up: 0 10%,
+  Down: 0 -10%,
+  Left: 10% 0,
+  Right: -10% 0,
+);
+
+/* Create classes for each direction */
+@each $direction, $magnitude in $directions {
+  @keyframes fadeIn#{$direction}Small {
+    @include fade-in-mixin(#{nth($magnitude, 1)}, #{nth($magnitude, 2)})
+  }
+  @-webkit-keyframes fadeIn#{$direction}Small {
+    @include fade-in-mixin(#{nth($magnitude, 1)}, #{nth($magnitude, 2)})
+  }
+  .fadeIn#{$direction}Small {
+    -webkit-animation-name: fadeIn#{$direction}Small;
+    animation-name: fadeIn#{$direction}Small;
+  }
+}
+
+.delayed-7 {
+  animation-delay: 0.7s;
+  -webkit-animation-delay: 0.7s;
+}
+.delayed-10 {
+  animation-delay: 1.0s;
+  -webkit-animation-delay: 1.0s;
+}

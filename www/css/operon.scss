@@ -1,0 +1,123 @@
+@import 'animations', 'colors', 'terminal';
+
+html, body {
+  font-family: 'Heebo', sans-serif;
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  background-color: lighten($pale-copper, 35%);
+}
+
+header {
+  background-color: $yankees-blue;
+  height: 100%;
+  height: 100vh;
+  min-height: 800px;
+  width: 100%;
+  text-align: center;
+  color: $isabelline;
+
+  div:nth-child(1) {
+    padding-top: 12%;
+    padding-bottom: 2%;
+  }
+
+  h1 {
+    font-size: 4.5rem;
+    font-family: 'Raleway', sans-serif;
+    margin-top: 25px;
+  }
+  span.subheading {
+    text-transform: uppercase;
+    font-size: 1.3rem;
+    color: lightgray;
+    display: block;
+    margin-bottom: 25px;
+  }
+
+  img.logo {
+    max-height: 150px;
+  }
+
+  a.btn {
+    padding: 15px 35px;
+    background: $pale-copper;
+    display: inline-block;
+    border-radius: 3px;
+    text-transform: uppercase;
+    color: white;
+
+    :active {
+      outline: none;
+    }
+  }
+
+  a.header-btn {
+    @extend a.btn;
+
+    &:after {
+      content: "";
+      height: 10px;
+      width: 10px;
+      background-color: red;
+    }
+  }
+}
+
+section {
+  color: $yankees-blue;
+  padding: 60px 0;
+
+  &.light {background-color: lighten($pale-copper, 40%);}
+  &.blue {background-color: lighten($shadow-blue, 35%);}
+
+
+  div.section-head {
+    margin: 50px 0;
+
+    div.heading {
+      text-align: center;
+      font-size: 4rem;
+      font-family: 'Raleway', sans-serif;
+    }
+    div.subheading {
+      font-size: 1.3rem;
+      text-align: center;
+      text-transform: uppercase;
+      font-family: 'Raleway', sans-serif;
+    }
+  }
+}
+
+ul.icon-list {
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+
+    span.icon {
+      font-size: 4rem;
+      margin-right: 25px;
+    }
+
+    div.heading {
+      font-family: 'Raleway', sans-serif;
+      font-size: 1.6rem;
+    }
+  }
+}
+
+div.flex-container {
+  display: flex;
+  padding: 0 10%;
+
+  .flex-col {
+    width: 100%;
+    padding: 15px;
+  }
+}
+
+
+
+/* Small animations, based on animate.css */

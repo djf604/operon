@@ -1,0 +1,37 @@
+.terminal {
+  margin: 0 auto;
+  color: $isabelline;
+  min-width: 680px;
+
+  div.screenwrapper {
+    background-color: $yankees-blue;
+    border-bottom: {
+      left-radius: 5px;
+      right-radius: 5px;
+    }
+    height: 408px;
+    overflow: hidden;
+    overflow-wrap: break-word;
+    position: relative;
+  }
+
+  div.screencontent {
+    position: absolute;
+    margin-top: 20px;
+    padding: 20px;
+    bottom: 0;
+    min-height: 100%;
+    white-space: pre;
+    font-family: 'Oxygen Mono', monospace;
+    font-size: 16px;
+  }
+
+  div.menu {
+    height: 25px;
+    background-color: #bbb;
+    border-top: {
+      left-radius: 5px;
+      right-radius: 5px;
+    }
+  }
+}
