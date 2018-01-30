@@ -46,6 +46,7 @@ class Software(_ParslAppBlueprint):
         """
         blueprint = self.prep(*args, **kwargs)
         _ParslAppBlueprint._blueprints[blueprint['id']] = blueprint
+        logger.debug('Registered {}\nCommand: {}'.format(blueprint['name'], blueprint['cmd']))
         return _DeferredApp(blueprint['id'])
 
     def run(self, *args, **kwargs):
@@ -111,7 +112,8 @@ class Software(_ParslAppBlueprint):
             cmd.extend(['|', pipe_blueprint['cmd']])
             app_blueprint['inputs'].extend(pipe_blueprint['inputs'])
             app_blueprint['outputs'].extend(pipe_blueprint['outputs'])
-            # TODO stdout and stderr
+            app_blueprint['stdout'] = pipe_blueprint['stdout']
+            app_blueprint['stderr'] = pipe_blueprint['stderr']
 
         app_blueprint['cmd'] = ' '.join(cmd)
 
@@ -259,6 +261,11 @@ class CodeBlock(_ParslAppBlueprint):
             'stdout': stdout,
             'stderr': stderr
         }
+        logger.debug('Registered function {}\nArgs: {}\nKwargs: {}'.format(
+            func.__name__,
+            args,
+            kwargs
+        ))
         return _DeferredApp(blueprint_id)
 
 
@@ -441,7 +448,7 @@ class ParslPipeline(object):
                 app_id = blueprint['id']
                 digraph.add_node(blueprint['id'], name=blueprint['name'], type='app', blueprint=blueprint)
             else:
-                app_id = blueprint['func'].__name__
+                app_id = blueprint['id']
                 digraph.add_node(app_id, name=app_id, type='app', blueprint=blueprint)
 
             for blp_input in blueprint['inputs']:
