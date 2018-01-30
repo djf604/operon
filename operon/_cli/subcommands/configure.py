@@ -122,7 +122,7 @@ class Subcommand(BaseSubcommand):
                     else:
                         # If conda env doesn't yet exist, ask if user wants to create it
                         ask_create_conda = input('Conda is installed, but no environment has been created for this '
-                                                 'pipline.\nOperon can use conda to download the software this '
+                                                 'pipeline.\nOperon can use conda to download the software this '
                                                  'pipeline uses and inject those into your configuration.\nWould you '
                                                  'like to download the software now? [y/n] ')
                         if ask_create_conda.lower().strip() not in {'no', 'n'}:

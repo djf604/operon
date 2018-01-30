@@ -6,7 +6,6 @@ import logging
 from datetime import datetime
 
 import operon._cli.subcommands
-from operon._cli.subcommands import fetch_subcommand_class, get_operon_subcommands
 
 
 def setup_logger(logs_dir=None):
@@ -31,21 +30,11 @@ def print_no_init():
                      'run \'operon init\' before using Operon.\n')
 
 
-def print_help_text():
-    fetch_subcommand_class('help').run_from_argv()
-
-
-def print_unrecognized_command(subcommand):
-    sys.stderr.write('Unrecognized command: {}\n\n'.format(subcommand))
-    sys.stderr.write('Use one of the following:\n')
-    print_help_text()
-
-
 def execute_from_command_line(argv=None):
     argv = argv or sys.argv[:]
 
     # Get subcommand classes
-    operon_subcommand_classes = get_operon_subcommands(classes=True)
+    operon_subcommand_classes = operon._cli.subcommands.get_operon_subcommands(classes=True)
 
     # Create subparsers
     parser = argparse.ArgumentParser(prog='operon')
