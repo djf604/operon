@@ -5,6 +5,9 @@ import json
 import readline
 import subprocess
 import re
+from collections import defaultdict
+
+import inquirer
 
 from operon._cli.subcommands import BaseSubcommand
 
@@ -12,9 +15,84 @@ ARGV_PIPELINE_NAME = 0
 ARGV_FIRST_ARGUMENT = 0
 EXIT_CMD_SUCCESS = 0
 EXIT_CMD_SYNTAX_ERROR = 2
+INQUIRER_TYPES = {'text', 'path', 'confirm', 'list', 'checkbox', 'password'}
 
 readline.set_completer_delims(' \t\n;')
 readline.parse_and_bind('tab: complete')
+
+
+def configure(config_dict, current_config=None, breadcrumb=None, questions=None):
+    # Initialize if this is the outermost recursion
+    if current_config is None:
+        current_config = dict()
+    if breadcrumb is None:
+        questions = list()
+        breadcrumb = 'root'
+
+    # Go through all keys
+    for key in config_dict:
+        current_breadcrumb = '__'.join((breadcrumb, key))
+        if isinstance(config_dict[key], str):
+            # This is a string-type leaf
+            # Add either a Path or Text question, depending on the key
+            q_type = 'Path' if 'path' in key.lower() else 'Text'
+            questions.append(getattr(inquirer, q_type)(
+                name=current_breadcrumb,
+                message=config_dict[key],
+                default=current_config.get(key)
+            ))
+        elif isinstance(config_dict[key], dict) and 'q_type' in config_dict[key]:
+            # This is a dict type leaf
+            q_config = config_dict[key]
+
+            # Ensure this is a valid question type
+            if q_config['q_type'].strip().lower() not in INQUIRER_TYPES:
+                raise ValueError('q_type must be one of {{{}}}'.format(', '.join(INQUIRER_TYPES)))
+
+            # Get and remove q_type from question config
+            q_type = q_config.pop('q_type').strip().capitalize()
+
+            # Inject default, depending on question config
+            if 'always_default' in q_config:
+                q_config.pop('always_default')
+            elif current_config.get(key):
+                q_config['default'] = current_config.get(key)
+
+            # Add question
+            questions.append(getattr(inquirer, q_type)(
+                name=current_breadcrumb,
+                **q_config
+            ))
+        else:
+            # This is an inner configuration dictionary, so recurse
+            configure(
+                config_dict[key],
+                current_config.get(key, dict()),
+                breadcrumb=current_breadcrumb,
+                questions=questions
+            )
+
+    # If this is the outermost recursion, ask questions and return results
+    if breadcrumb == 'root':
+        user_input = inquirer.prompt(questions)
+
+        # Inflate answers into original config dictionary
+        tree = lambda: defaultdict(tree)
+        root = tree()
+        for key, value in user_input.items():
+            # Get breadcrumbs to leaf with out root node
+            breadcrumbs = key.split('__')[1:]
+
+            # Get the inner dictionary needed
+            inner = root[breadcrumbs[0]]
+            for _ in breadcrumbs[1:-1]:
+                inner = inner[_]
+
+            # Set value of inner dictionary
+            inner[breadcrumbs[-1]] = value
+
+        # Convert whole thing to regular dict, return
+        return json.loads(json.dumps(root))
 
 
 def create_conda_environment(name, config, conda_path):
@@ -41,23 +119,10 @@ def create_conda_environment(name, config, conda_path):
         subprocess.call([conda_path, 'config', '--add', 'channels', channel])
 
 
-def configure(config_dict, current_config, breadcrumbs, blank=False):
-    for key in config_dict:
-        if isinstance(config_dict[key], dict):
-            configure(config_dict[key], current_config.get(key, {}), '|'.join((breadcrumbs, key)), blank)
-        else:
-            if not blank:
-                prompt = '|'.join((breadcrumbs, config_dict[key])).strip().strip(':')
-                config_dict[key] = (input(prompt + ' [{}]: '.format(current_config.get(key, ''))) or
-                                    current_config.get(key, ''))
-            else:
-                config_dict[key] = ''
-
-
 class Subcommand(BaseSubcommand):
     @staticmethod
     def usage():
-        return 'operon configure <pipeline-name> [-h] [--location LOCATION] [--blank]'
+        return 'operon configure <pipeline-name> [-h] [--location LOCATION]'
 
     def help_text(self):
         return 'Create a configuration file for a pipeline.'
@@ -66,8 +131,6 @@ class Subcommand(BaseSubcommand):
         parser = argparse.ArgumentParser(prog='operon configure', usage=self.usage(), description=self.help_text())
         parser.add_argument('--location', help=('Path to which to save this config file. ' +
                                                 'Defaults to install directory.'))
-        parser.add_argument('--blank', action='store_true',
-                            help='Skip configuration and create a blank configuration file.')
 
         if not subcommand_args or subcommand_args[ARGV_FIRST_ARGUMENT].lower() in ['-h', '--help', 'help']:
             parser.print_help()
@@ -84,12 +147,9 @@ class Subcommand(BaseSubcommand):
                                                                  '{}.json'.format(pipeline_name)),
                                             help=('Path to which to save this config file. '
                                                   'Defaults to install directory.'))
-            config_args_parser.add_argument('--blank', action='store_true',
-                                            help='Skip configuration and create a blank configuration file.')
             configure_args = vars(config_args_parser.parse_args(subcommand_args[1:]))
 
             save_location = configure_args['location']
-            is_blank = configure_args['blank']
 
             # If this config already exists, prompt user before overwrite
             if os.path.isfile(save_location):
@@ -137,8 +197,8 @@ class Subcommand(BaseSubcommand):
             try:
                 current_config = json.loads(open(os.path.join(self.home_configs,
                                                               '{}.json'.format(pipeline_name))).read())
-            except:
-                current_config = {}
+            except json.JSONDecodeError:
+                current_config = None
 
             # If user wants to use conda, inject paths into config
             if use_conda_paths:
@@ -154,9 +214,7 @@ class Subcommand(BaseSubcommand):
                     current_config[conda_package.config_key]['path'] = software_path
 
             try:
-                configure(config_dict, current_config, '', is_blank)
-                if is_blank:
-                    sys.stderr.write('Blank configuration generated.\n')
+                populated_config_dict = configure(config_dict, current_config)
             except (KeyboardInterrupt, EOFError):
                 sys.stderr.write('\nUser aborted configuration.\n')
                 sys.exit(EXIT_CMD_SUCCESS)
@@ -164,7 +222,7 @@ class Subcommand(BaseSubcommand):
             # Write config out to file
             try:
                 with open(save_location, 'w') as config_output:
-                    config_output.write(json.dumps(config_dict, indent=4) + '\n')
+                    config_output.write(json.dumps(populated_config_dict, indent=2) + '\n')
                 sys.stderr.write('Configuration file successfully written.\n')
             except IOError:
                 sys.stderr.write('Could not open file for writing.\n')
