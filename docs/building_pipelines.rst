@@ -374,8 +374,11 @@ A ``Software`` instance is an abstraction of an executable program external to t
     from operon.components import Software
 
     bwa = Software(name='bwa', path='/path/to/bwa')
-    samtools = Software(name='samtools', path='/path/to/samtools')
+    samtools_flagstat = Software(name='samtools', subprogram='flagstat')
     genecounter = Software(name='genecounter', path='/path/to/genecounter')
+
+If the ``path=`` parameter isn't given, Operon will try to infer the path by looking in
+``pipeline_config[name]['path']``. If the path can't be inferred, a ``ValueError`` will be thrown.
 
 To register an Executable node in the workflow graph, call the ``Software`` instance's ``.register()`` method.
 ``register()`` takes any of ``Parameter``, ``Redirect``, ``Pipe``. Keyword arguments ``extra_inputs=`` and
