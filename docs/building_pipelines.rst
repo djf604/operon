@@ -87,8 +87,7 @@ other relevant information for the user.
     def description(self):
         return 'An example pipeline, written in Operon, powered by Parsl'
 
-The pipeline description is displayed when the user runs ``operon show`` or when ``--help`` is given to ``operon run``.
-TODO I'm actually not sure about that last one
+The pipeline description is displayed when the user runs ``operon show``.
 
 Dependencies
 ############
@@ -197,33 +196,73 @@ reference files, number of threads to use, etc will vary by platform but will be
         return {
             'software1': {
                 'path': 'Full path to software1',
-                'threads': 'Run software1 with this many threads'
+                'threads': 'Run software1 with this many threads',
+                'threads': {
+                    'q_type': 'list',
+                    'message': 'Run software1 with this many threads',
+                    'choices': ['1', '2', '4', '8', '16'],
+                    'default': '4'
+                }
             },
             'software2': {
                 'path': 'Full path to software2',
-                'genome_reference': 'Path to genome reference'
+                'genome_reference': {
+                    'q_type': 'path',
+                    'message': 'Path to genome reference'
+                }
             }
         }
 
 The returned configuration dictionary may nest arbitrarily deep. All values must be either a dictionary or a string.
-Considering the configuration dictionary as a tree, all string values must by definition be leafs, and so terminate a
-branch. During configuration of the pipeline using ``operon configure``, the user is presented with a prompt for each
-leaf, and the user input is gathered and stored in place of the prompt string.
+Considering the configuration dictionary as a tree, there are two types of leaves: a string or a dictionary which
+configures a question to the user. During configuration of the pipeline using ``operon configure``, the user is
+presented with a prompt for each leaf, and the user input is gathered and stored in place of the prompt string.
 
 .. note::
 
     The nesting of dictionaries inside the configuration dictionary is purely for the developer's organizational
     convenience; the user will never see anything but prompts defined by the string values.
 
+    If the order of prompts is important, return a ``collections.OrderedDict`` instance.
+
+For a string leaf, the question type defaults to a Text question, where the prompt presented is the string itself. The
+exception to this is if the word ``path`` is found in the most immediate key, the question type will default to
+``Path``.
+
+For a dictionary leaf, the question type can be fully configured. For a dictionary to be recognized as a leaf, it must
+contain the key ``q_type``, or else it will be interpreted as another level in the nested configuration dictionary. The
+following options can be passed to a question configuration:
+
+* ``q_type`` must be one of ``{path, text, confirm, list, checkbox, password}``
+* ``message`` is the prompt displayed to the user
+* ``default`` is a default value suggested to the user as part of the prompt
+* ``validate`` is a function which determines whether the user input is valid
+* ``ignore`` is a function which determines whether to display this question to the user
+* ``choices`` is a list of choices; only used by the List and Checkbox question types
+* ``always_default`` if present with any value, will force the default to always be the value defined by the key
+  ``default``, regardless of whether another value was injected by Operon
+
+The ``q_type`` and ``message`` keys are required for all question types, while the ``choices`` key is additionally
+required for List and Checkbox question types. For more information on how each of the question types operate,
+please refer to the
+`inquirer documentation <http://python-inquirer.readthedocs.io/en/latest/usage.html#question-types>`_
+on question types.
+
 For the above example configuration, the user will see and interactively fill in the prompts:
 
 .. code-block:: text
 
     $ operon configure pipeline-name
-    > Full path to software1: (User enters) /path/to/soft1
-    > Run software1 with this many threads: (User enters) 8
-    > Full path to software2: (User enters) /path/to/soft2
-    > Path to genome reference: (User enters) /path/to/genome
+    [?] Full path to software1: (User enters) /path/to/soft1
+    [?] Run software1 with this many threads: (User selects) 8
+       1
+       2
+       4
+     > 8
+       16
+
+    [?] Full path to software2: (User enters) /path/to/soft2
+    [?] Path to genome reference: (User enters) /path/to/genome
 
 The input from the user is stored in the ``.operon`` folder, so the next time the pipeline is run with this
 configuration it will be made available in the ``pipeline_config`` parameter:
