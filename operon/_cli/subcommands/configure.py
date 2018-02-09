@@ -119,6 +119,24 @@ def create_conda_environment(name, config, conda_path):
         subprocess.call([conda_path, 'config', '--add', 'channels', channel])
 
 
+def conda_env_exists(conda_path, conda_env_name):
+    conda_list_cmd = '{} env list'.format(conda_path)
+    return conda_env_name in {
+        env_name.split()[0]
+        for env_name in subprocess.check_output(conda_list_cmd, shell=True).decode().split('\n')
+        if '__operon__' in env_name
+    }
+
+
+def get_conda_env_location(conda_path, conda_env_name):
+    conda_list_cmd = '{} env list'.format(conda_path)
+    return [
+        env_name.split()[1]
+        for env_name in subprocess.check_output(conda_list_cmd, shell=True).decode().split('\n')
+        if conda_env_name in env_name
+    ][0]
+
+
 class Subcommand(BaseSubcommand):
     @staticmethod
     def usage():
@@ -153,56 +171,64 @@ class Subcommand(BaseSubcommand):
 
             # If this config already exists, prompt user before overwrite
             if os.path.isfile(save_location):
-                overwrite = input('Configuration for {} already exists at {}, overwrite? [y/n] '.format(
-                    pipeline_name,
-                    save_location
-                ))
+                overwrite = inquirer.prompt([inquirer.Confirm(
+                    'overwrite',
+                    message='Configuration for {} already exists at {}, overwrite?'.format(
+                        pipeline_name, save_location
+                    )
+                )]) or dict()
 
                 # If user responds no, exit immediately
-                if overwrite.lower() in {'no', 'n'}:
-                    sys.stderr.write('\nUser aborted configuration.\n')
+                if not overwrite.get('overwrite'):
+                    sys.stderr.write('User aborted configuration.\n')
                     sys.exit(EXIT_CMD_SUCCESS)
 
             # If the pipeline contains a listing of conda packages, and the user has conda installed and in
             # PATH, then ask if the user wants to use conda to install packages
-            use_conda_paths = False
+            use_conda_paths, conda_path = False, None
             conda_env_name = '__operon__{}'.format(pipeline_name)
-            conda_envs_location = None
             pipeline_conda_config = pipeline_class.conda()
             if pipeline_conda_config.get('packages'):
                 try:
                     conda_path = subprocess.check_output('which conda', shell=True).strip().decode()
-                    conda_envs_location = os.path.join(os.path.split(os.path.split(conda_path)[0])[0], 'envs')
-                    if os.path.isdir(os.path.join(conda_envs_location, conda_env_name)):
+                    if conda_env_exists(conda_path, conda_env_name):
                         # If conda env already exists
-                        ask_use_conda = input('A conda environment for this pipeline already exists, would you '
-                                              'like to use it to populate software paths? [y/n] ')
-                        if ask_use_conda.lower().strip() not in {'no', 'n'}:
-                            use_conda_paths = True
+                        use_conda_paths = inquirer.prompt([inquirer.Confirm(
+                            'use_conda_paths',
+                            'A conda environment for this pipeline already exists, would you '
+                            'like to use it to populate software paths?',
+                            default=True
+                        )], raise_keyboard_interrupt=True).get('use_conda_paths')
                     else:
                         # If conda env doesn't yet exist, ask if user wants to create it
-                        ask_create_conda = input('Conda is installed, but no environment has been created for this '
-                                                 'pipeline.\nOperon can use conda to download the software this '
-                                                 'pipeline uses and inject those into your configuration.\nWould you '
-                                                 'like to download the software now? [y/n] ')
-                        if ask_create_conda.lower().strip() not in {'no', 'n'}:
-                            use_conda_paths = True
-                            # Create new conda environment
+                        use_conda_paths = inquirer.prompt([inquirer.Confirm(
+                            'use_conda_paths',
+                            'Conda is installed, but no environment has been created for this '
+                            'pipeline.\nOperon can use conda to download the software this '
+                            'pipeline uses and inject those into your configuration.\nWould you '
+                            'like to download the software now?',
+                            default=True
+                        )], raise_keyboard_interrupt=True).get('use_conda_paths')
+
+                        if use_conda_paths:
                             create_conda_environment(conda_env_name, pipeline_conda_config, conda_path)
                 except subprocess.CalledProcessError:
                     pass  # If user doesn't have conda installed, do nothing and continue
+                except KeyboardInterrupt:
+                    sys.stderr.write('User aborted configuration.\n')
+                    sys.exit(EXIT_CMD_SUCCESS)
 
             # Get configuration from pipeline, recursively prompt user to fill in info
             config_dict = pipeline_class.configuration()
             try:
                 current_config = json.loads(open(os.path.join(self.home_configs,
                                                               '{}.json'.format(pipeline_name))).read())
-            except json.JSONDecodeError:
-                current_config = None
+            except (json.JSONDecodeError, FileNotFoundError):
+                current_config = dict()
 
             # If user wants to use conda, inject paths into config
-            if use_conda_paths:
-                conda_env_location = os.path.join(conda_envs_location, conda_env_name)
+            if use_conda_paths and conda_path:
+                conda_env_location = get_conda_env_location(conda_path, conda_env_name)
                 for conda_package in pipeline_conda_config.get('packages', list()):
                     software_path = (
                         os.path.join(conda_env_location, conda_package.executable_path)
