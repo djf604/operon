@@ -28,10 +28,16 @@ class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path'))
 class Software(_ParslAppBlueprint):
     _id = 0
     _software_paths = set()
+    _pipeline_config = None
 
-    def __init__(self, name, path):
+    def __init__(self, name, path=None, subprogram=''):
         self.name = name
-        self.path = path
+        if path is None:
+            try:
+                path = Software._pipeline_config[name]['path']
+            except Exception:
+                raise ValueError('Software path could not be inferred')
+        self.path = ' '.join((path, str(subprogram))) if subprogram else path
         self.basename = os.path.basename(path).replace(' ', '_')
 
         # Add path to class collection of software paths
@@ -287,6 +293,7 @@ class ParslPipeline(object):
         logger.info('Started pipeline run')
 
         # Run the pipeline to populate Software instances and construct the workflow graph
+        Software._pipeline_config = copy(pipeline_config)
         self.pipeline(pipeline_args, pipeline_config)
         workflow_graph = self._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
