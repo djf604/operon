@@ -56,6 +56,7 @@ dfk_with_config = {
     'basic-threads-8': partial(basic_threads, workers=8),
     'basic-threads-4': partial(basic_threads, workers=4),
     'basic-threads-2': partial(basic_threads, workers=2),
+    'basic-threads-1': partial(basic_threads, workers=1),
 }
 
 init_config_stub = {

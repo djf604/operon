@@ -5,14 +5,16 @@ import logging
 import tempfile
 from copy import copy
 from collections import namedtuple
+from datetime import datetime
 
 from parsl import App
 import networkx as nx
 
-from operon._util import setup_logger
+from operon._util.logging import setup_logger
 from operon._util.home import get_operon_home
 from operon._util.configs import dfk_with_config, direct_config, cycle_config_input_options
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
+from operon._util.errors import MalformedPipelineError
 
 SOURCE = 0
 TARGET = 1
@@ -52,7 +54,12 @@ class Software(_ParslAppBlueprint):
         """
         blueprint = self.prep(*args, **kwargs)
         _ParslAppBlueprint._blueprints[blueprint['id']] = blueprint
-        logger.debug('Registered {}\nCommand: {}'.format(blueprint['name'], blueprint['cmd']))
+        cmd = '{cmd}{stdout_redirect}{stderr_redirect}'.format(
+            cmd=blueprint['cmd'],
+            stdout_redirect=' > {}'.format(blueprint['stdout']) if blueprint['stdout'] else '',
+            stderr_redirect=' 2> {}'.format(blueprint['stderr']) if blueprint['stderr'] else ''
+        )
+        logger.debug('Registered {}\nCommand: {}'.format(blueprint['name'], cmd))
         return _DeferredApp(blueprint['id'])
 
     def run(self, *args, **kwargs):
@@ -287,10 +294,15 @@ class ParslPipeline(object):
     _pipeline_run_temp_dir = tempfile.TemporaryDirectory(suffix='__operon')
 
     def _run_pipeline(self, pipeline_args, pipeline_config):
+        # Ensure the pipeline() method is overridden
+        if 'pipeline' not in vars(self.__class__):
+            raise MalformedPipelineError('Pipeline has no method pipeline()')
+
         # Set up logs dir
         os.makedirs(pipeline_args['logs_dir'], exist_ok=True)
         setup_logger(pipeline_args['logs_dir'])
-        logger.info('Started pipeline run')
+        start_time = datetime.now()
+        logger.info('Started pipeline run\n@operon_start {}'.format(str(start_time)))
 
         # Run the pipeline to populate Software instances and construct the workflow graph
         Software._pipeline_config = copy(pipeline_config)
@@ -303,6 +315,18 @@ class ParslPipeline(object):
         # Wait for all apps to complete
         for fut in pipeline_futs:
             fut.result()
+
+        # Record end time and elapsed time
+        end_time = datetime.now()
+        elapsed_time = end_time - start_time
+        logger.info('Finished pipeline run\n@operon_end {}\n@operon_elapsed {}\n@operon_elapsed_seconds {}'.format(
+            str(end_time),
+            str(elapsed_time),
+            str(elapsed_time.seconds)
+        ))
+
+        # Remove stream handler before outputing captured streams
+        logger.handlers.pop(1)
 
         # Inject captured app stdout and stderr into logs
         for captured_output in os.listdir(ParslPipeline._pipeline_run_temp_dir.name):
@@ -487,13 +511,13 @@ class ParslPipeline(object):
                 self.pipeline_config = json.loads(config.read())
         except IOError:
             sys.stdout.write('Fatal Error: Config file at {} does not exist.\n'.format(
-                self.pipeline_args['config']
+                self.pipeline_args['pipeline_config']
             ))
             sys.stdout.write('A config file location can be specified with the --config option.\n')
             sys.exit(EXIT_ERROR)
         except ValueError:
             sys.stdout.write('Fatal Error: Config file at {} is not in JSON format.\n'.format(
-                self.pipeline_args['config']
+                self.pipeline_args['pipeline_config']
             ))
             sys.exit(EXIT_ERROR)
 

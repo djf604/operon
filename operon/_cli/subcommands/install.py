@@ -24,7 +24,7 @@ def usage():
 
 class Subcommand(BaseSubcommand):
     def help_text(self):
-        return 'Install a Operon formatted pipeline.'
+        return 'Install an Operon formatted pipeline.'
 
     def run(self, subcommand_args):
         parser = argparse.ArgumentParser(prog='operon install', usage=usage(), description=self.help_text())
