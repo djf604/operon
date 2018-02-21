@@ -11,6 +11,7 @@ import inquirer
 
 from operon._cli.subcommands import BaseSubcommand
 from operon._util.home import OperonState
+from operon._util.errors import MalformedPipelineConfigError
 
 ARGV_PIPELINE_NAME = 0
 ARGV_FIRST_ARGUMENT = 0
@@ -64,7 +65,7 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
                 name=current_breadcrumb,
                 **q_config
             ))
-        else:
+        elif isinstance(config_dict[key], dict):
             # This is an inner configuration dictionary, so recurse
             configure(
                 config_dict[key],
@@ -72,6 +73,8 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
                 breadcrumb=current_breadcrumb,
                 questions=questions
             )
+        else:
+            raise MalformedPipelineConfigError('Encountered unknown object: {}'.format(config_dict[key]))
 
     # If this is the outermost recursion, ask questions and return results
     if breadcrumb == 'root':
@@ -172,11 +175,10 @@ class Subcommand(BaseSubcommand):
 
             # If this config already exists, prompt user before overwrite
             if os.path.isfile(save_location):
+                sys.stderr.write('    Configuration for {} already exists at {}\n'.format(pipeline_name, save_location))
                 overwrite = inquirer.prompt([inquirer.Confirm(
                     'overwrite',
-                    message='Configuration for {} already exists at {}, overwrite?'.format(
-                        pipeline_name, save_location
-                    )
+                    message='Overwrite?'
                 )]) or dict()
 
                 # If user responds no, exit immediately
@@ -194,10 +196,10 @@ class Subcommand(BaseSubcommand):
                     conda_path = subprocess.check_output('which conda', shell=True).strip().decode()
                     if conda_env_exists(conda_path, conda_env_name):
                         # If conda env already exists
-                        sys.stderr.write('A conda environment for this pipeline already exists.')
+                        sys.stderr.write('    A conda environment for this pipeline already exists.\n')
                         use_conda_paths = inquirer.prompt([inquirer.Confirm(
                             'use_conda_paths',
-                            'Would you like to use it to populate software paths?',
+                            message='Would you like to use it to populate software paths?',
                             default=True
                         )], raise_keyboard_interrupt=True).get('use_conda_paths')
                     else:
@@ -209,7 +211,7 @@ class Subcommand(BaseSubcommand):
                         )
                         use_conda_paths = inquirer.prompt([inquirer.Confirm(
                             'use_conda_paths',
-                            'Would you like to download the software now?',
+                            message='Would you like to download the software now?',
                             default=True
                         )], raise_keyboard_interrupt=True).get('use_conda_paths')
 
@@ -223,6 +225,8 @@ class Subcommand(BaseSubcommand):
 
             # Get configuration from pipeline, recursively prompt user to fill in info
             config_dict = pipeline_class.configuration()
+            if not isinstance(config_dict, dict):
+                raise MalformedPipelineConfigError('Outermost object is not a dictionary')
             config_dict['parsl_config_path'] = 'Path to a parsl configuration to use (leave blank to skip)'
             try:
                 current_config = json.loads(open(os.path.join(self.home_configs,
@@ -248,6 +252,8 @@ class Subcommand(BaseSubcommand):
             except (KeyboardInterrupt, EOFError):
                 sys.stderr.write('\nUser aborted configuration.\n')
                 sys.exit(EXIT_CMD_SUCCESS)
+            except AttributeError:
+                raise MalformedPipelineConfigError('Something about the configuration is malformed')
 
             # Write config out to file
             try:
