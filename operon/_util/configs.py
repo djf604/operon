@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 from functools import partial
@@ -7,6 +8,23 @@ from parsl import ThreadPoolExecutor, DataFlowKernel
 from parsl.execution_provider.errors import BadConfig
 
 logger = logging.getLogger('operon.main')
+
+
+def parse_pipeline_config(pipeline_config_path):
+    try:
+        with open(pipeline_config_path) as config:
+            return json.loads(config.read())
+    except IOError:
+        sys.stdout.write('Fatal Error: Config file at {} does not exist.\n'.format(
+            pipeline_config_path
+        ))
+        sys.stdout.write('A config file location can be specified with the --config option.\n')
+        sys.exit(1)
+    except ValueError:
+        sys.stdout.write('Fatal Error: Config file at {} is not in JSON format.\n'.format(
+            pipeline_config_path
+        ))
+        sys.exit(1)
 
 
 def cycle_config_input_options(user_input):
@@ -57,6 +75,7 @@ dfk_with_config = {
     'basic-threads-4': partial(basic_threads, workers=4),
     'basic-threads-2': partial(basic_threads, workers=2),
     'basic-threads-1': partial(basic_threads, workers=1),
+    'sequential-local': partial(basic_threads, workers=1)
 }
 
 init_config_stub = {

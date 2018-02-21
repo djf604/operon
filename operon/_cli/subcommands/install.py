@@ -82,11 +82,11 @@ class Subcommand(BaseSubcommand):
             sys.stderr.write('Dependencies cannot be installed, skipping this step.\n')
             sys.exit(EXIT_CMD_ERROR)
 
-        pipeline_class = self.get_pipeline_class(pipeline_path)
-        pipeline_dependencies = pipeline_class.dependencies()
+        pipeline_instance = self.get_pipeline_instance(pipeline_path)
+        pipeline_dependencies = pipeline_instance.dependencies()
         if pipeline_dependencies:
             sys.stderr.write('\nAttempting to install the following dependencies:\n')
-            pipeline_class._print_dependencies()
+            sys.stdout.write('\n'.join(pipeline_instance.dependencies()) + '\n')
 
             if not args['y']:
                 proceed = inquirer.prompt([inquirer.Confirm(

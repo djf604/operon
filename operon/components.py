@@ -6,6 +6,7 @@ import queue
 import logging
 import tempfile
 import threading
+import subprocess
 from copy import copy
 from collections import namedtuple
 from datetime import datetime
@@ -315,8 +316,11 @@ class ParslPipeline(object):
         self.pipeline(pipeline_args, pipeline_config)
         workflow_graph = self._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
-        # Register apps and data with Parsl, get all app futures
-        pipeline_futs = self._register_workflow(workflow_graph, self._get_dfk(pipeline_args, pipeline_config))
+        # Register apps and data with Parsl, get all app futures and temporary files
+        pipeline_futs, tmp_files = self._register_workflow(
+            workflow_graph,
+            self._get_dfk(pipeline_args, pipeline_config)
+        )
 
         # Record start time
         start_time = datetime.now()
@@ -377,6 +381,10 @@ class ParslPipeline(object):
             except KeyboardInterrupt:
                 logger.info('User aborted run')
                 break
+
+        # All apps are complete, so run cleanup
+        if tmp_files:
+            subprocess.call('rm {} 2>/dev/null || exit 0'.format(' '.join(tmp_files)), shell=True)
 
         # All apps are complete, so kill running listener thread
         running_listener_q.put('kill')
@@ -463,10 +471,6 @@ class ParslPipeline(object):
                 cmd=cmd
             )
 
-        @App('bash', dfk)
-        def _cleanup(*args, **kwargs):
-            return 'rm {} 2>/dev/null || exit 0'.format(' '.join(args))
-
         # Some data containers
         app_futures, data_futures = list(), dict()
         app_nodes_registered = {
@@ -533,12 +537,10 @@ class ParslPipeline(object):
             if not app_nodes_registered[app_node]:
                 register_app(app_node, workflow_graph)
 
-        # If any temporary files exist, register cleanup program at the end of the workflow
+        # Gather files marked as temporary, if any
         tmp_files = [d for d in data_futures if Data(d).tmp]
-        if tmp_files:
-            app_futures.append(('_cleanup', _cleanup(*tmp_files, inputs=list(zip(*copy(app_futures)))[1])))
 
-        return app_futures
+        return app_futures, tmp_files
 
     def _assemble_graph(self, blueprints):
         # Initialize a directed graph
@@ -575,25 +577,6 @@ class ParslPipeline(object):
         # TODO Find a way to output this to the user, maybe in the logs directory
 
         return digraph
-
-    def _parse_config(self):
-        try:
-            with open(self.pipeline_args['pipeline_config']) as config:
-                self.pipeline_config = json.loads(config.read())
-        except IOError:
-            sys.stdout.write('Fatal Error: Config file at {} does not exist.\n'.format(
-                self.pipeline_args['pipeline_config']
-            ))
-            sys.stdout.write('A config file location can be specified with the --config option.\n')
-            sys.exit(EXIT_ERROR)
-        except ValueError:
-            sys.stdout.write('Fatal Error: Config file at {} is not in JSON format.\n'.format(
-                self.pipeline_args['pipeline_config']
-            ))
-            sys.exit(EXIT_ERROR)
-
-    def _print_dependencies(self):
-        sys.stdout.write('\n'.join(self.dependencies()) + '\n')
 
     def parsl_configuration(self):
         """

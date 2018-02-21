@@ -44,6 +44,15 @@ def get_operon_home(root=False):
     return operon_home_root if root else os.path.join(operon_home_root, '.operon')
 
 
+def pipeline_is_installed(pipeline_name, force_state_installation=False):
+    pipeline_file_exists = os.path.isfile(
+        os.path.join(get_operon_home(), 'pipelines', '{}.py'.format(pipeline_name))
+    )
+    if force_state_installation:
+        return pipeline_file_exists and pipeline_name in OperonState().state['pipelines']
+    return pipeline_file_exists
+
+
 def load_pipeline_file(pipeline_filepath):
     """
     This only works in Python 3.5+

@@ -34,7 +34,7 @@ class BaseSubcommand(object):
     home_pipelines = os.path.join(get_operon_home(), 'pipelines')
     home_configs = os.path.join(get_operon_home(), 'configs')
 
-    def get_pipeline_class(self, pipeline_name):
+    def get_pipeline_instance(self, pipeline_name):
         pipeline_filepath = os.path.join(self.home_pipelines,
                                          '{}.py'.format(pipeline_name))
 

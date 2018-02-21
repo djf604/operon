@@ -3,6 +3,7 @@ import sys
 import argparse
 
 from operon._cli.subcommands import BaseSubcommand
+from operon._util.configs import parse_pipeline_config
 
 ARGV_FIRST_ARGUMENT = 0
 ARGV_PIPELINE_NAME = 0
@@ -27,9 +28,9 @@ class Subcommand(BaseSubcommand):
 
         # Get the pipeline class based on the name
         pipeline_name = subcommand_args[ARGV_PIPELINE_NAME]
-        pipeline_class = self.get_pipeline_class(pipeline_name)
+        pipeline_instance = self.get_pipeline_instance(pipeline_name)
 
-        if pipeline_class is not None:
+        if pipeline_instance is not None:
             # Parse the pipeline arguments and inject them into the pipeline class
             pipeline_args_parser = argparse.ArgumentParser(prog='operon run {}'.format(pipeline_name))
             pipeline_args_parser.add_argument('--pipeline-config',
@@ -40,14 +41,12 @@ class Subcommand(BaseSubcommand):
             pipeline_args_parser.add_argument('--logs-dir', default='.', help='Path to a directory to store log files')
 
             # Get custom arguments from the Pipeline
-            pipeline_class.arguments(pipeline_args_parser)
-            pipeline_class.pipeline_args = vars(pipeline_args_parser.parse_args(subcommand_args[1:]))
+            pipeline_instance.arguments(pipeline_args_parser)
+            pipeline_args = vars(pipeline_args_parser.parse_args(subcommand_args[1:]))
 
-            # Parse pipeline config and run pipeline
-            pipeline_class._parse_config()
-            pipeline_class._run_pipeline(
-                pipeline_args=pipeline_class.pipeline_args,
-                pipeline_config=pipeline_class.pipeline_config
+            pipeline_instance._run_pipeline(
+                pipeline_args=pipeline_args,
+                pipeline_config=parse_pipeline_config(pipeline_args['pipeline_config'])
             )
         else:
             # If pipeline class doesn't exist, exit immediately
