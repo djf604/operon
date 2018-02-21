@@ -27,24 +27,35 @@ class Subcommand(BaseSubcommand):
             parser.print_help()
             sys.exit(EXIT_CMD_SUCCESS)
 
-        pipeline_class = self.get_pipeline_class(pipeline_name)
-        config_dictionary = pipeline_class.configuration()
+        pipeline_instance = self.get_pipeline_instance(pipeline_name)
+        config_dictionary = pipeline_instance.configuration()
 
         # Start show subcommand output
         sys.stderr.write('Operon pipeline: {}\n\n'.format(pipeline_name))
 
         # Show pipeline arguments
         show_parser = argparse.ArgumentParser(prog='operon run {}'.format(pipeline_name),
-                                              description=pipeline_class.description())
-        pipeline_class.arguments(show_parser)
+                                              description=pipeline_instance.description())
+        pipeline_instance.arguments(show_parser)
         show_parser.print_help()
 
         # Show pipeline dependencies
-        sys.stderr.write('\nPipeline Dependencies:\n')
-        if pipeline_class.dependencies():
-            pipeline_class._print_dependencies()
+        sys.stderr.write('\nPython Dependencies:\n')
+        if pipeline_instance.dependencies():
+            sys.stdout.write('\n'.join(pipeline_instance.dependencies()) + '\n')
         else:
             sys.stderr.write('None\n')
+
+        # Show conda dependencies
+        sys.stderr.write('\nConda Packages:\n')
+        conda_packages = pipeline_instance.conda().get('packages')
+        if conda_packages:
+            sys.stderr.write('\n'.join(sorted(set([c.tag for c in conda_packages]))) + '\n')
+
+        # Show current Parsl configuration, if it exists
+        if pipeline_instance.parsl_configuration():
+            sys.stderr.write('\nPipeline Default Parsl Configuration:\n')
+            sys.stderr.write(json.dumps(pipeline_instance.parsl_configuration(), indent=4) + '\n')
 
         # Show current platform configuration, if it exists
         config_json_filepath = os.path.join(self.home_configs, '{}.json'.format(pipeline_name))

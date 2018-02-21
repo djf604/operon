@@ -20,7 +20,7 @@ def create_or_append_to_file(comment, payload, filepath):
     if os.path.isfile(filepath):
         write_mode = 'a'
         payload_exists = re.search(
-            r'\n\s*' + payload,
+            r'\n\s*' + payload.replace('-', '\-'),
             open(filepath).read()
         )
     if not payload_exists:

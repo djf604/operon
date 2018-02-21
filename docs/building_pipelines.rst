@@ -43,7 +43,7 @@ The developer for this pipeline only needs to define the following:
 
 This defines three Software instances (Apps in Parsl verbage): bwa, samtools, and genecounter. All three Software
 instances have data dependencies; that is, they are require input data to run. However, two of the Software instances'
-data dependencies are not yet available (because they havne't been produced by the pipeline yet), so they will not
+data dependencies are not yet available (because they haven't been produced by the pipeline yet), so they will not
 run until those dependencies become available. The Software bwa, however, has all of its data dependencies available,
 so it begins running immediately. Once bwa is finished running, and consequently produces its output ``/path/to/bam``,
 the Software samtools and genecounter both recognize that their data dependencies are now available, and so both

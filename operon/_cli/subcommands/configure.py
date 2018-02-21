@@ -10,6 +10,8 @@ from collections import defaultdict
 import inquirer
 
 from operon._cli.subcommands import BaseSubcommand
+from operon._util.home import OperonState
+from operon._util.errors import MalformedPipelineConfigError
 
 ARGV_PIPELINE_NAME = 0
 ARGV_FIRST_ARGUMENT = 0
@@ -63,7 +65,7 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
                 name=current_breadcrumb,
                 **q_config
             ))
-        else:
+        elif isinstance(config_dict[key], dict):
             # This is an inner configuration dictionary, so recurse
             configure(
                 config_dict[key],
@@ -71,10 +73,12 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
                 breadcrumb=current_breadcrumb,
                 questions=questions
             )
+        else:
+            raise MalformedPipelineConfigError('Encountered unknown object: {}'.format(config_dict[key]))
 
     # If this is the outermost recursion, ask questions and return results
     if breadcrumb == 'root':
-        user_input = inquirer.prompt(questions)
+        user_input = inquirer.prompt(questions, raise_keyboard_interrupt=True)
 
         # Inflate answers into original config dictionary
         tree = lambda: defaultdict(tree)
@@ -95,7 +99,11 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
         return json.loads(json.dumps(root))
 
 
-def create_conda_environment(name, config, conda_path):
+def create_conda_environment(name, config, conda_path, reinstall=False):
+    if reinstall:
+        subprocess.call([conda_path, 'env', 'remove', '--yes', '--name', name])
+
+    # Install proper channels
     new_channels = config.get('channels') or ['r', 'defaults', 'conda-forge', 'bioconda']
     packages = [pkg.tag for pkg in config.get('packages', list())]
 
@@ -155,9 +163,9 @@ class Subcommand(BaseSubcommand):
             sys.exit(EXIT_CMD_SUCCESS)
 
         pipeline_name = subcommand_args[ARGV_PIPELINE_NAME]
-        pipeline_class = self.get_pipeline_class(pipeline_name)
+        pipeline_instance = self.get_pipeline_instance(pipeline_name)
 
-        if pipeline_class is not None:
+        if pipeline_instance is not None:
             # Parse configure options
             config_args_parser = argparse.ArgumentParser(prog='operon configure {}'.format(pipeline_name))
             config_args_parser.add_argument('--location',
@@ -171,11 +179,10 @@ class Subcommand(BaseSubcommand):
 
             # If this config already exists, prompt user before overwrite
             if os.path.isfile(save_location):
+                sys.stderr.write('    Configuration for {} already exists at {}\n'.format(pipeline_name, save_location))
                 overwrite = inquirer.prompt([inquirer.Confirm(
                     'overwrite',
-                    message='Configuration for {} already exists at {}, overwrite?'.format(
-                        pipeline_name, save_location
-                    )
+                    message='Overwrite?'
                 )]) or dict()
 
                 # If user responds no, exit immediately
@@ -187,26 +194,43 @@ class Subcommand(BaseSubcommand):
             # PATH, then ask if the user wants to use conda to install packages
             use_conda_paths, conda_path = False, None
             conda_env_name = '__operon__{}'.format(pipeline_name)
-            pipeline_conda_config = pipeline_class.conda()
+            pipeline_conda_config = pipeline_instance.conda()
             if pipeline_conda_config.get('packages'):
                 try:
                     conda_path = subprocess.check_output('which conda', shell=True).strip().decode()
                     if conda_env_exists(conda_path, conda_env_name):
-                        # If conda env already exists
-                        use_conda_paths = inquirer.prompt([inquirer.Confirm(
-                            'use_conda_paths',
-                            'A conda environment for this pipeline already exists, would you '
-                            'like to use it to populate software paths?',
-                            default=True
-                        )], raise_keyboard_interrupt=True).get('use_conda_paths')
+                        # If conda env already exists, give the user choices on how to proceed
+                        sys.stderr.write('    A conda environment for this pipeline already exists.\n')
+                        env_exists_answer = inquirer.prompt([inquirer.List(
+                            'conda_env_exists',
+                            message='What would you like to do?',
+                            choices=[
+                                'Use the installed environment to populate software paths',
+                                'Ignore the installed environment',
+                                'Reinstall the environment'
+                            ]
+                        )], raise_keyboard_interrupt=True).get('conda_env_exists')
+
+                        if env_exists_answer != 'Ignore the installed environment':
+                            use_conda_paths = True
+
+                        if env_exists_answer == 'Reinstall the environment':
+                            create_conda_environment(
+                                conda_env_name,
+                                pipeline_conda_config,
+                                conda_path,
+                                reinstall=True
+                            )
                     else:
                         # If conda env doesn't yet exist, ask if user wants to create it
-                        use_conda_paths = inquirer.prompt([inquirer.Confirm(
-                            'use_conda_paths',
+                        sys.stderr.write(
                             'Conda is installed, but no environment has been created for this '
                             'pipeline.\nOperon can use conda to download the software this '
-                            'pipeline uses and inject those into your configuration.\nWould you '
-                            'like to download the software now?',
+                            'pipeline uses and inject those into your configuration.\n'
+                        )
+                        use_conda_paths = inquirer.prompt([inquirer.Confirm(
+                            'use_conda_paths',
+                            message='Would you like to download the software now?',
                             default=True
                         )], raise_keyboard_interrupt=True).get('use_conda_paths')
 
@@ -219,7 +243,10 @@ class Subcommand(BaseSubcommand):
                     sys.exit(EXIT_CMD_SUCCESS)
 
             # Get configuration from pipeline, recursively prompt user to fill in info
-            config_dict = pipeline_class.configuration()
+            config_dict = pipeline_instance.configuration()
+            if not isinstance(config_dict, dict):
+                raise MalformedPipelineConfigError('Outermost object is not a dictionary')
+            config_dict['parsl_config_path'] = 'Path to a parsl configuration to use (leave blank to skip)'
             try:
                 current_config = json.loads(open(os.path.join(self.home_configs,
                                                               '{}.json'.format(pipeline_name))).read())
@@ -244,11 +271,18 @@ class Subcommand(BaseSubcommand):
             except (KeyboardInterrupt, EOFError):
                 sys.stderr.write('\nUser aborted configuration.\n')
                 sys.exit(EXIT_CMD_SUCCESS)
+            except AttributeError:
+                raise MalformedPipelineConfigError('Something about the configuration is malformed')
 
             # Write config out to file
             try:
                 with open(save_location, 'w') as config_output:
                     config_output.write(json.dumps(populated_config_dict, indent=2) + '\n')
+
+                # Set pipeline to configured in Operon state
+                with OperonState() as opstate:
+                    opstate.state['pipelines'][pipeline_name]['configured'] = True
+
                 sys.stderr.write('Configuration file successfully written.\n')
             except IOError:
                 sys.stderr.write('Could not open file for writing.\n')

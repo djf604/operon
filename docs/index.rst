@@ -12,11 +12,12 @@ Operon Documentation
    getting_started
    using_operon
    building_pipelines
+   changelog
 
 
 
 Parsl
 =====
 
-Operon is powered by Parsl. To get an understand of how to most efficiently run Operon pipelines, check out the
+Operon is powered by Parsl. To get an understanding of how to most efficiently run Operon pipelines, check out the
 `Parsl documentation <http://parsl.readthedocs.io/en/latest/>`_.

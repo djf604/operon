@@ -1,18 +1,27 @@
 import os
 import sys
 import json
+import time
+import queue
 import logging
 import tempfile
+import threading
+import subprocess
 from copy import copy
 from collections import namedtuple
+from datetime import datetime
+
 
 from parsl import App
+from parsl.dataflow.futures import DependencyError
+from parsl.app.errors import AppFailure, MissingOutputs, ParslError
 import networkx as nx
 
-from operon._util import setup_logger
+from operon._util.logging import setup_logger
 from operon._util.home import get_operon_home
 from operon._util.configs import dfk_with_config, direct_config, cycle_config_input_options
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
+from operon._util.errors import MalformedPipelineError
 
 SOURCE = 0
 TARGET = 1
@@ -30,7 +39,7 @@ class Software(_ParslAppBlueprint):
     _software_paths = set()
     _pipeline_config = None
 
-    def __init__(self, name, path=None, subprogram=''):
+    def __init__(self, name, path=None, subprogram='', success_on=None):
         self.name = name
         if path is None:
             try:
@@ -39,6 +48,7 @@ class Software(_ParslAppBlueprint):
                 raise ValueError('Software path could not be inferred')
         self.path = ' '.join((path, str(subprogram))) if subprogram else path
         self.basename = os.path.basename(path).replace(' ', '_')
+        self.success_on = success_on or ['0']
 
         # Add path to class collection of software paths
         Software._software_paths.add(self.path)
@@ -52,7 +62,12 @@ class Software(_ParslAppBlueprint):
         """
         blueprint = self.prep(*args, **kwargs)
         _ParslAppBlueprint._blueprints[blueprint['id']] = blueprint
-        logger.debug('Registered {}\nCommand: {}'.format(blueprint['name'], blueprint['cmd']))
+        cmd = '{cmd}{stdout_redirect}{stderr_redirect}'.format(
+            cmd=blueprint['cmd'],
+            stdout_redirect=' > {}'.format(blueprint['stdout']) if blueprint['stdout'] else '',
+            stderr_redirect=' 2> {}'.format(blueprint['stderr']) if blueprint['stderr'] else ''
+        )
+        logger.debug('Registered {} as {}\nCommand: {}'.format(blueprint['name'], blueprint['id'], cmd))
         return _DeferredApp(blueprint['id'])
 
     def run(self, *args, **kwargs):
@@ -67,6 +82,7 @@ class Software(_ParslAppBlueprint):
             'type': 'bash',
             'name': kwargs.get('action', self.path),
             'cmd': '',
+            'success_on': self.success_on,
             'inputs': list(),
             'outputs': list(),
             'stdout': None,
@@ -287,22 +303,104 @@ class ParslPipeline(object):
     _pipeline_run_temp_dir = tempfile.TemporaryDirectory(suffix='__operon')
 
     def _run_pipeline(self, pipeline_args, pipeline_config):
+        # Ensure the pipeline() method is overridden
+        if 'pipeline' not in vars(self.__class__):
+            raise MalformedPipelineError('Pipeline has no method pipeline()')
+
         # Set up logs dir
         os.makedirs(pipeline_args['logs_dir'], exist_ok=True)
         setup_logger(pipeline_args['logs_dir'])
-        logger.info('Started pipeline run')
 
         # Run the pipeline to populate Software instances and construct the workflow graph
         Software._pipeline_config = copy(pipeline_config)
         self.pipeline(pipeline_args, pipeline_config)
         workflow_graph = self._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
-        # Register apps and data with Parsl, get all app futures
-        pipeline_futs = self._register_workflow(workflow_graph, self._get_dfk(pipeline_args, pipeline_config))
+        # Register apps and data with Parsl, get all app futures and temporary files
+        pipeline_futs, tmp_files = self._register_workflow(
+            workflow_graph,
+            self._get_dfk(pipeline_args, pipeline_config)
+        )
+
+        # Record start time
+        start_time = datetime.now()
+        logger.info('Started pipeline run\n@operon_start {}'.format(str(start_time)))
+
+        # Thread to listen for when apps start and stop
+        def running_listener(q, pipeline_futs):
+            fut_map = {fut: name for name, fut in pipeline_futs}
+            pending, running, finished = set(list(fut_map.keys())), set(), set()
+            while True:
+                if not q.empty():
+                    break
+                time.sleep(0.01)
+
+                # Copy running set, to see if anything changes
+                precheck_running = copy(running)
+
+                # Identify finished futures
+                for running_fut in running:
+                    if running_fut.done():
+                        logger.info('{} finished running'.format(fut_map[running_fut]))
+                        finished.add(running_fut)
+                running -= finished
+
+                # Identify newly running futures
+                for pending_fut in pending:
+                    if pending_fut.running():
+                        logger.info('{} started running'.format(fut_map[pending_fut]))
+                        running.add(pending_fut)
+                pending -= running
+
+                # Check if anything changed this iteration
+                if precheck_running != running and running:
+                    logger.info('Actively running: {}'.format(
+                        '  '.join([fut_map[f] for f in running])
+                    ))
+
+        # Setup and start running listener thread
+        running_listener_q = queue.Queue()
+        running_listener_thread = threading.Thread(target=running_listener, args=(running_listener_q, pipeline_futs))
+        running_listener_thread.start()
 
         # Wait for all apps to complete
-        for fut in pipeline_futs:
-            fut.result()
+        for name, fut in pipeline_futs:
+            try:
+                fut.result()
+            except AppFailure as e:
+                logger.info('{} failed during execution'.format(name))
+                logger.debug(e.reason)
+                logger.info('Check run log for output from failed {}'.format(name))
+            except DependencyError as e:
+                logger.info('{} had a dependency fail'.format(name))
+                logger.debug(str(e))
+            except MissingOutputs as e:
+                logger.info('{} did not produce expected outputs\n{}'.format(name, e))
+            except ParslError as e:
+                logger.info('{} produced a general Parsl error\n{}'.format(name, e))
+            except KeyboardInterrupt:
+                logger.info('User aborted run')
+                break
+
+        # All apps are complete, so run cleanup
+        if tmp_files:
+            subprocess.call('rm {} 2>/dev/null || exit 0'.format(' '.join(tmp_files)), shell=True)
+
+        # All apps are complete, so kill running listener thread
+        running_listener_q.put('kill')
+        running_listener_thread.join()
+
+        # Record end time and elapsed time
+        end_time = datetime.now()
+        elapsed_time = end_time - start_time
+        logger.info('Finished pipeline run\n@operon_end {}\n@operon_elapsed {}\n@operon_elapsed_seconds {}'.format(
+            str(end_time),
+            str(elapsed_time),
+            str(elapsed_time.seconds)
+        ))
+
+        # Remove stream handler before outputing captured streams
+        logger.handlers.pop(1)
 
         # Inject captured app stdout and stderr into logs
         for captured_output in os.listdir(ParslPipeline._pipeline_run_temp_dir.name):
@@ -366,12 +464,12 @@ class ParslPipeline(object):
             return func_(*func_args, **func_kwargs)
 
         @App('bash', dfk)
-        def _bashapp(cmd, **kwargs):
-            return cmd
-
-        @App('bash', dfk)
-        def _cleanup(*args, **kwargs):
-            return 'rm {} 2>/dev/null || exit 0'.format(' '.join(args))
+        def _bashapp(cmd, success_on=None, **kwargs):
+            return ('scodes=({exit_codes});{cmd};ecode=$?;for i in "${{{{scodes[@]}}}}";'
+                    'do if [ "$i" = $ecode ];then exit 0;fi;done;exit 1').format(
+                exit_codes=' '.join(map(str, success_on or ['0'])),
+                cmd=cmd
+            )
 
         # Some data containers
         app_futures, data_futures = list(), dict()
@@ -408,6 +506,7 @@ class ParslPipeline(object):
             if _app_blueprint['type'] == 'bash':
                 _app_future = _bashapp(
                     cmd=_app_blueprint['cmd'],
+                    success_on=_app_blueprint['success_on'],
                     inputs=_app_inputs,
                     outputs=_app_blueprint['outputs'],
                     stdout=_app_blueprint['stdout'],
@@ -424,7 +523,7 @@ class ParslPipeline(object):
                     stderr=_app_blueprint['stderr']
                 )
 
-            app_futures.append(_app_future)
+            app_futures.append((_app_blueprint['id'], _app_future))
 
             # Set output data futures
             for data_fut in _app_future.outputs:
@@ -438,12 +537,10 @@ class ParslPipeline(object):
             if not app_nodes_registered[app_node]:
                 register_app(app_node, workflow_graph)
 
-        # If any temporary files exist, register cleanup program at the end of the workflow
+        # Gather files marked as temporary, if any
         tmp_files = [d for d in data_futures if Data(d).tmp]
-        if tmp_files:
-            app_futures.append(_cleanup(*tmp_files, inputs=copy(app_futures)))
 
-        return app_futures
+        return app_futures, tmp_files
 
     def _assemble_graph(self, blueprints):
         # Initialize a directed graph
@@ -480,25 +577,6 @@ class ParslPipeline(object):
         # TODO Find a way to output this to the user, maybe in the logs directory
 
         return digraph
-
-    def _parse_config(self):
-        try:
-            with open(self.pipeline_args['pipeline_config']) as config:
-                self.pipeline_config = json.loads(config.read())
-        except IOError:
-            sys.stdout.write('Fatal Error: Config file at {} does not exist.\n'.format(
-                self.pipeline_args['config']
-            ))
-            sys.stdout.write('A config file location can be specified with the --config option.\n')
-            sys.exit(EXIT_ERROR)
-        except ValueError:
-            sys.stdout.write('Fatal Error: Config file at {} is not in JSON format.\n'.format(
-                self.pipeline_args['config']
-            ))
-            sys.exit(EXIT_ERROR)
-
-    def _print_dependencies(self):
-        sys.stdout.write('\n'.join(self.dependencies()) + '\n')
 
     def parsl_configuration(self):
         """
