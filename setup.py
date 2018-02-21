@@ -6,6 +6,7 @@ setup(
     name='Operon',
     version=operon.__version__,
     description='Dataflow pipeline development framework, powered by Parsl',
+    long_description='Dataflow pipeline development framework, powered by Parsl',
     license='GNU GPLv3',
     author='Dominic Fitzgerald',
     author_email='dominicfitzgerald11@gmail.com',
