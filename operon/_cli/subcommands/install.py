@@ -4,6 +4,8 @@ import shutil
 import argparse
 from datetime import datetime
 
+import inquirer
+
 from operon._cli.subcommands import BaseSubcommand
 from operon._util.home import OperonState
 
@@ -24,7 +26,7 @@ def usage():
 
 class Subcommand(BaseSubcommand):
     def help_text(self):
-        return 'Install a Operon formatted pipeline.'
+        return 'Install an Operon formatted pipeline.'
 
     def run(self, subcommand_args):
         parser = argparse.ArgumentParser(prog='operon install', usage=usage(), description=self.help_text())
@@ -44,10 +46,14 @@ class Subcommand(BaseSubcommand):
 
         # Check if pipeline already exists
         if os.path.isfile(os.path.join(self.home_pipelines, os.path.basename(pipeline_path))):
-            overwrite = input('Pipeline {} is already installed, overwrite? [y/n] '.format(
-                    os.path.basename(pipeline_path)
-            ))
-            if overwrite.lower() in {'no', 'n'}:
+            sys.stderr.write('    Pipeline {} is already installed\n'.format(os.path.basename(pipeline_path)))
+            overwrite = inquirer.prompt([inquirer.Confirm(
+                'overwrite',
+                message='Overwrite?'
+            )]) or dict()
+
+            # If user responds no, exit immediately
+            if not overwrite.get('overwrite'):
                 sys.exit(EXIT_CMD_SUCCESS)
 
         # Copy pipeline file
@@ -76,15 +82,22 @@ class Subcommand(BaseSubcommand):
             sys.stderr.write('Dependencies cannot be installed, skipping this step.\n')
             sys.exit(EXIT_CMD_ERROR)
 
-        pipeline_class = self.get_pipeline_class(pipeline_path)
-        pipeline_dependencies = pipeline_class.dependencies()
+        pipeline_instance = self.get_pipeline_instance(pipeline_path)
+        pipeline_dependencies = pipeline_instance.dependencies()
         if pipeline_dependencies:
             sys.stderr.write('\nAttempting to install the following dependencies:\n')
-            pipeline_class._print_dependencies()
+            sys.stdout.write('\n'.join(pipeline_instance.dependencies()) + '\n')
 
             if not args['y']:
-                install_depencencies = input('\nProceed with dependency installation? [y/n] ')
-                if install_depencencies.lower() in {'no', 'n', 'nope', 'nada', 'nah'}:
+                proceed = inquirer.prompt([inquirer.Confirm(
+                    'proceed',
+                    message='Proceed with dependency installation?',
+                    default=True
+                )]) or dict()
+
+                # If user responds no, exit immediately
+                if proceed.get('overwrite'):
                     sys.exit(EXIT_CMD_SUCCESS)
+
             for package in pipeline_dependencies:
                 pip(['install', '--upgrade', package])

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 from importlib.util import spec_from_file_location, module_from_spec
 
@@ -8,8 +9,15 @@ class OperonState(object):
         # Get current state
         operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
         self.state_json_path = os.path.join(operon_home_root, '.operon', 'operon_state.json')
-        with open(self.state_json_path) as operon_state:
-            self.state = json.load(operon_state)
+        try:
+            with open(self.state_json_path) as operon_state:
+                self.state = json.load(operon_state)
+        except FileNotFoundError:
+            sys.stderr.write('Operon state metadata json could not be found at {}\n'.format(self.state_json_path))
+            sys.exit(1)
+        except json.JSONDecodeError:
+            sys.stderr.write('Operon state metadata json is malformed\n')
+            sys.exit(1)
 
     def __enter__(self):
         return self
@@ -24,10 +32,25 @@ class OperonState(object):
     def remove_pipeline(self, name):
         self.state['pipelines'].pop(name, None)
 
+    def list_pipelines(self):
+        return [
+            (pipeline_name, state['configured'])
+            for pipeline_name, state in self.state['pipelines'].items()
+        ]
+
 
 def get_operon_home(root=False):
     operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
     return operon_home_root if root else os.path.join(operon_home_root, '.operon')
+
+
+def pipeline_is_installed(pipeline_name, force_state_installation=False):
+    pipeline_file_exists = os.path.isfile(
+        os.path.join(get_operon_home(), 'pipelines', '{}.py'.format(pipeline_name))
+    )
+    if force_state_installation:
+        return pipeline_file_exists and pipeline_name in OperonState().state['pipelines']
+    return pipeline_file_exists
 
 
 def load_pipeline_file(pipeline_filepath):

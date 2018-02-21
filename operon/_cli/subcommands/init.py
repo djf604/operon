@@ -20,7 +20,7 @@ def create_or_append_to_file(comment, payload, filepath):
     if os.path.isfile(filepath):
         write_mode = 'a'
         payload_exists = re.search(
-            r'\n\s*' + payload,
+            r'\n\s*' + payload.replace('-', '\-'),
             open(filepath).read()
         )
     if not payload_exists:
@@ -80,7 +80,9 @@ def make_operon_home(operon_home_root):
 
         # Register completion program in ~/.bash_completion
         bash_completion_file = os.path.join(os.path.expanduser('~'), '.bash_completion')
-        bash_completion_payload = 'complete -o bashdefault -o default -C {completer_path} operon'.format(
+        bash_completion_payload = ('if [ -e {completer_path} ]; then\n'
+                                   '    complete -o bashdefault -o default -C {completer_path} operon\n'
+                                   'fi').format(
             completer_path=operon_completer_path
         )
         create_or_append_to_file(

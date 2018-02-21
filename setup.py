@@ -6,13 +6,15 @@ setup(
     name='Operon',
     version=operon.__version__,
     description='Dataflow pipeline development framework, powered by Parsl',
+    long_description='Dataflow pipeline development framework, powered by Parsl',
     license='GNU GPLv3',
     author='Dominic Fitzgerald',
     author_email='dominicfitzgerald11@gmail.com',
     url='https://github.com/djf604/operon',
     download_url='https://github.com/djf604/operon/tarball/{}'.format(operon.__version__),
     packages=find_packages(),
-    install_requires=['libsubmit', 'parsl==0.3.1', 'networkx==2.0'],
+    install_requires=['libsubmit', 'parsl==0.3.1', 'networkx==2.0', 'inquirer'],
+    dependency_links=['git+https://github.com/djf604/python-inquirer'],
     entry_points={
         'console_scripts': [
             'operon = operon._util:execute_from_command_line'
