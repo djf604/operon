@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v0.1.1 (released ?? Jan 2018)
------------------------------
+v0.1.1 (released Jan 2018)
+--------------------------
 * If the ``path=`` argument isn't provided to a ``Software`` instance, the path will attempt to populate from
   ``pipeline_config[software_name]['path']``
 * Added ``subprogram=`` argument to ``Software``
