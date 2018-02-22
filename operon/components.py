@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import time
 import queue
@@ -30,11 +29,27 @@ logger = logging.getLogger('operon.main')
 
 
 class CondaPackage(namedtuple('CondaPackage', 'tag config_key executable_path')):
+    """
+    Tuple provided to the ``packages`` key of a pipeline's ``conda()`` method.
+
+    .. code-block:: python
+
+        CondaPackage(tag, config_key, executable_path=None)
+
+    """
     def __new__(cls, tag, config_key, executable_path=None):
         return super().__new__(cls, tag, config_key, executable_path)
 
 
 class Software(_ParslAppBlueprint):
+    """
+    An abstraction of an executable program external to the pipeline.
+
+    :param name: str Name of the Software
+    :param path: str Path to executable for the Software
+    :param subprogram: str Subprogram to be appended to the execution call
+    :param success_on: list<str> List of exit codes as strings to be considered success
+    """
     _id = 0
     _software_paths = set()
     _pipeline_config = None
@@ -55,10 +70,19 @@ class Software(_ParslAppBlueprint):
 
     def register(self, *args, **kwargs):
         """
-        Registers a Software run as a parsl App
-        :param args:
-        :param kwargs:
-        :return:
+        Registers a run of this program in the Parsl workflow, using the given
+        ``Parameter``, ``Redirect``, and ``Pipe`` components.
+
+        In addition to an arbitrary number of positional arguments, takes the following keyword arguments:
+
+        * ``extra_inputs`` - list of ``Data`` to be considered input, in addition to any provided
+          in a ``Parameter`` or ``Redirect``
+        * ``extra_outputs`` - list of ``Data`` to be considered output, in addition to any provided
+          in a ``Parameter`` or ``Redirect``
+        * ``wait_on`` - list of Apps to be considered input; should be a list of ``_DeferredApp`` objects,
+          which are returned by ``Software.register()`` and ``CodeBlock.register()``
+
+        :return: ``_DeferredApp`` which can be passed to other Apps
         """
         blueprint = self.prep(*args, **kwargs)
         _ParslAppBlueprint._blueprints[blueprint['id']] = blueprint
@@ -71,12 +95,13 @@ class Software(_ParslAppBlueprint):
         return _DeferredApp(blueprint['id'])
 
     def run(self, *args, **kwargs):
-        """
-        Alias for self.register(), for inter-run-mode compatibility
-        """
         self.register(*args, **kwargs)
 
     def prep(self, *args, **kwargs):
+        """
+        Does most of the work for ``register()``, but this method should only be used directly
+        inside of a ``Pipe`` object.
+        """
         app_blueprint = {
             'id': '{}_{}'.format(self.basename, _ParslAppBlueprint.get_id()),
             'type': 'bash',
@@ -85,10 +110,15 @@ class Software(_ParslAppBlueprint):
             'success_on': self.success_on,
             'inputs': list(),
             'outputs': list(),
+            'wait_on': list(),
             'stdout': None,
             'stderr': None
         }
         cmd = [self.path]
+
+        # Add software dependencies, will be _DeferredApp objects
+        if kwargs.get('wait_on'):
+            app_blueprint['wait_on'].extend(map(str, kwargs.get('wait_on')))
 
         # Add extra inputs and extra outputs
         if kwargs.get('extra_inputs'):
@@ -157,13 +187,24 @@ class Software(_ParslAppBlueprint):
 
 
 class Data(object):
+    """
+    Representation of a file on the filesystem that should be considered input to or output
+    from some program in the pipeline. Multiple instantiations of the same file
+    path will return the same ``Data`` object.
+
+    ``Data`` objects should be used in place of a string filepath when passing ``Parameter`` or
+    ``Redirect`` to a ``Software``. Alternatively, a list of them can be passed to a ``Software`` or
+    ``CodeBlock`` in their ``extra_inputs=`` or ``extra_outputs=`` keyword arguments.
+
+    :param path: str Path to the file on the filesystem
+    """
     _id = 0
     _data = dict()
 
     INPUT = 0
     OUTPUT = 1
 
-    def __new__(cls, path, tmp=False):
+    def __new__(cls, path):
         if path in cls._data:
             return cls._data[path]
         return super(Data, cls).__new__(cls)
@@ -179,10 +220,18 @@ class Data(object):
             self._terminal_output = False
 
     def as_input(self):
+        """
+        Marks this ``Data`` object as input
+        """
         self.mode = Data.INPUT
         return self
 
     def as_output(self, tmp=False):
+        """
+        Marks this ``Data`` object as output
+
+        :param tmp: bool If ``True``, this file will be deleted when the pipeline completes
+        """
         self.mode = Data.OUTPUT
         self.tmp = tmp
         return self
@@ -203,6 +252,13 @@ class DataBlob(object):
 
 
 class Parameter(object):
+    """
+    Abstraction of a command line parameter into a program.
+
+    :param *args: str All string arguments are joined together with spaces when parsed
+                      by a ``Software``
+    :param sep: str Separator between parameter tokens
+    """
     def __init__(self, *args, sep=' '):
         self.parameters = args
         self.sep = sep
@@ -214,7 +270,19 @@ class Parameter(object):
 
 class Redirect(object):
     """
-    The Redirect object abstracts out redirecting streams to files.
+    Abstraction of a command line redirect to a file.
+
+    :param stream: str|enum The stream to redirect
+    :param dest: str The filepath to dump the redirection
+
+    The following class constants exist for use with ``stream=``:
+
+    * STDOUT
+    * STDERR
+    * BOTH
+    * STDOUT_APPEND
+    * STDERR_APPEND
+    * BOTH_APPEND
     """
     STDOUT = 0
     STDERR = 1
@@ -261,6 +329,12 @@ class Redirect(object):
 
 
 class Pipe(object):
+    """
+    Abstracts piping the command line concept of using the output of one program as the
+    input into another.
+
+    :param piped_software_blueprint: the returned value of ``Software.prep()``
+    """
     def __init__(self, piped_software_blueprint):
         self.piped_software_blueprint = piped_software_blueprint
 
@@ -269,8 +343,25 @@ class Pipe(object):
 
 
 class CodeBlock(_ParslAppBlueprint):
+    """
+    Represents a block of Python code to be run as a unit of execution in the workflow.
+    """
     @staticmethod
-    def register(func, args=None, kwargs=None, inputs=None, outputs=None, stdout=None, stderr=None, **_kwargs):
+    def register(func, args=None, kwargs=None, inputs=None,
+                 outputs=None, wait_on=None, stdout=None, stderr=None, **_kwargs):
+        """
+        Registers a run of the function ``func`` in the Parsl workflow.
+
+        :param func: function Reference to the function to be executed
+        :param args: iterable The positional arguments into the function
+        :param kwargs: dict The keyword arguments into the function
+        :param inputs: list<``Data``> The input dependencies
+        :param outputs: list<``Data``> The output files produced
+        :param wait_on: list<``_DeferredApp``> Other software input dependencies
+        :param stdout: str Path to file to store stdout stream
+        :param stderr: str Path to file to store stderr stream
+        :return: ``_DeferredApp`` representation of the value this function will eventually return
+        """
         blueprint_id = '{}_{}'.format(func.__name__, _ParslAppBlueprint.get_id())
         _ParslAppBlueprint._blueprints[blueprint_id] = {
             'id': blueprint_id,
@@ -278,8 +369,9 @@ class CodeBlock(_ParslAppBlueprint):
             'func': func,
             'args': args if args else list(),
             'kwargs': kwargs if kwargs else dict(),
-            'inputs': list(map(str, inputs)),
-            'outputs': list(map(str, outputs)),
+            'inputs': list(map(str, inputs)) if inputs else list(),
+            'outputs': list(map(str, outputs)) if outputs else list(),
+            'wait_on': list(map(str, wait_on)) if wait_on else list(),
             'stdout': stdout,
             'stderr': stderr
         }
@@ -491,10 +583,20 @@ class ParslPipeline(object):
             :param workflow_graph: nx.DiGraph Directed graph representation of the workflow
             :return: list<AppFuture> All app futures generated by the workflow
             """
+            print('Trying to register {}'.format(app_node_id))
             # Check if any input data nodes don't have data futures and have in-degree > 0
-            for input_data_node in workflow_graph.predecessors(app_node_id):
-                if input_data_node not in data_futures and data_node_in_degree[input_data_node] > 0:
-                    register_app(list(workflow_graph.predecessors(input_data_node))[0], workflow_graph)
+            for input_dependency_node in workflow_graph.predecessors(app_node_id):
+                if workflow_graph.nodes[input_dependency_node]['type'] == 'data':
+                    print('Got data node: {}'.format(input_dependency_node))
+                    print(workflow_graph.nodes[input_dependency_node])
+                    if input_dependency_node not in data_futures and data_node_in_degree[input_dependency_node] > 0:
+                        print('First I have to register {} from data dependency'.format(list(workflow_graph.predecessors(input_dependency_node))[0]))
+                        register_app(list(workflow_graph.predecessors(input_dependency_node))[0], workflow_graph)
+                elif workflow_graph.nodes[input_dependency_node]['type'] == 'app':
+                    print('Got app node: {}'.format(input_dependency_node))
+                    if not app_nodes_registered[input_dependency_node]:
+                        print('First I have to register {} from app dependency'.format(input_dependency_node))
+                        register_app(input_dependency_node, workflow_graph)
 
             # Register this app
             _app_blueprint = workflow_graph.node[app_node_id]['blueprint']
@@ -503,6 +605,15 @@ class ParslPipeline(object):
                 for input_data in _app_blueprint['inputs']
                 if data_futures.get(input_data)
             ]
+
+            # If there are any app dependencies, add them
+            if _app_blueprint['wait_on']:
+                _app_inputs.extend([
+                    app_nodes_registered.get(wait_on_app_id)
+                    for wait_on_app_id in _app_blueprint['wait_on']
+                    if app_nodes_registered.get(wait_on_app_id)
+                ])
+
             if _app_blueprint['type'] == 'bash':
                 _app_future = _bashapp(
                     cmd=_app_blueprint['cmd'],
@@ -530,7 +641,7 @@ class ParslPipeline(object):
                 if data_fut.filename not in data_futures:
                     data_futures[data_fut.filename] = data_fut
 
-            app_nodes_registered[app_node_id] = True
+            app_nodes_registered[app_node_id] = _app_future
 
         # Register all apps
         for app_node in app_nodes_registered:
@@ -548,12 +659,16 @@ class ParslPipeline(object):
 
         # Iterate through edges, and add nodes as necessary
         for blueprint in blueprints:
-            if blueprint['type'] == 'bash':
-                app_id = blueprint['id']
-                digraph.add_node(blueprint['id'], name=blueprint['name'], type='app', blueprint=blueprint)
-            else:
-                app_id = blueprint['id']
-                digraph.add_node(app_id, name=app_id, type='app', blueprint=blueprint)
+            # Add software node
+            app_id = blueprint['id']
+            app_name = blueprint['name'] if blueprint['type'] == 'bash' else app_id
+            digraph.add_node(app_id, name=app_name, type='app', blueprint=blueprint)
+            # if blueprint['type'] == 'bash':
+            #     app_id = blueprint['id']
+            #     digraph.add_node(blueprint['id'], name=blueprint['name'], type='app', blueprint=blueprint)
+            # else:
+            #     app_id = blueprint['id']
+            #     digraph.add_node(app_id, name=app_id, type='app', blueprint=blueprint)
 
             for blp_input in blueprint['inputs']:
                 digraph.add_node(blp_input, name=blp_input, type='data')
@@ -563,11 +678,14 @@ class ParslPipeline(object):
                 digraph.add_node(blp_output, name=blp_output, type='data')
                 digraph.add_edge(app_id, blp_output)
 
+            for blp_wait_on in blueprint['wait_on']:
+                digraph.add_edge(blp_wait_on, app_id)
+
         # Output graph in JSON format
         json_digraph = {'nodes': list(), 'edges': list()}
         for node, nodedata in digraph.nodes.items():
             json_digraph['nodes'].append(
-                {'data': {'id': os.path.basename(node), 'type': nodedata['type']}}
+                {'data': {'id': os.path.basename(node), 'type': nodedata['type'], 'haveblueprint': bool(nodedata.get('blueprint'))}}
             )
         for edge, edgedata in digraph.edges.items():
             json_digraph['edges'].append(
@@ -582,7 +700,12 @@ class ParslPipeline(object):
         """
         Override this method.
 
+        If provided, will be used as a low-precendence default to run pipelines. The user is given every
+        opportunity to provide his/her own Parsl configuration, but if absolutely none is given this
+        configuration will be used.
+
         This should be used with caution because it potentially reduces portability.
+
         :return: dict Parsl configuration as a low-precedence default for this pipeline
         """
         return None
@@ -590,28 +713,33 @@ class ParslPipeline(object):
     def description(self):
         """
         Override this method.
-        A single string describing this pipeline.
-        :return: str A description of this pipeline.
+
+        A string describing this pipeline.
+
+        :return: str A description of this pipeline
         """
         return ''
 
     def dependencies(self):
         """
         Override this method.
-        A list of pip style dependencies for this pipeline.
-        :return: list A list of pip style dependencies.
+
+        A list of pip style dependency tags for this pipeline.
+
+        :return: list A list of pip style dependencies
         """
         return list()
 
     def conda(self):
         """
         Override this method.
-        Directives to download software from conda/bioconda.
 
-        The returned dictionary should have a key 'packages' and an
-        optional key 'channels'.
-            - 'packages' should be a list of operon.components.CondaPackage tuples
-            - 'channels' should be list of conda channels to temporarily access for installation
+        Directives to download software from conda/bioconda.
+        The returned dictionary should have a key ``packages`` and an
+        optional key ``channels``.
+
+        * ``packages`` should be a list of ``operon.components.CondaPackage`` tuples
+        * ``channels`` should be list of conda channels to temporarily access for installation
 
         :return: dict A dict configuring conda packages
         """
@@ -620,25 +748,29 @@ class ParslPipeline(object):
     def arguments(self, parser):
         """
         Override this method.
-        Adds arguments to this pipeline using the argparse.add_argument() method. The parser
-        argument is an argparse.ArgumentParser() object.
-        :param parser: argparse.ArgumentParser object
+
+        Adds arguments to this pipeline using the ``argparse.add_argument()`` method. The parser
+        argument is an ``argparse.ArgumentParser()`` object.
+
+        :param parser: ``argparse.ArgumentParser`` object
         """
         pass
 
     def configuration(self):
         """
         Override this method.
+
         Dictionary representation of the JSON object that will be used to configure this
         pipeline. Configuration variables should be values that will change from platform
         to platform but not run to run, ex. paths to software, but likely not parameters to
         that software.
 
         Keys will be returned as is, but terminal string values will become input values from
-        the user when he/she calls operon configure.
+        the user when he/she calls ``operon configure``.
 
-        In the pipeline, this dictionary will become the class variable pipeline_config, with
+        In the pipeline, this dictionary will be used to populate ``pipeline_config``, with
         terminal string values replaced with user input values.
+
         :return: dict Dictionary representation of config values
         """
         return dict()
@@ -646,12 +778,13 @@ class ParslPipeline(object):
     def pipeline(self, pipeline_args, pipeline_config):
         """
         Override this method.
+
         The logic of the pipeline will be here. The arguments are automatically populated with the
-        user arguments to the pipeline (those added with the method self.arguments()) as well as
-        the configuration for the pipeline (as a dictionary of the form returned by the method config(),
+        user arguments to the pipeline (those added with the method ``self.arguments()``) as well as
+        the configuration for the pipeline (as a dictionary of the form returned by the method ``self.configuration()``,
         but with user input values in place of terminal strings.)
+
         :param pipeline_args: dict Populated dictionary of user arguments
         :param pipeline_config: dict Populated dictionary of pipeline configuration
-        :return: None
         """
         raise NotImplementedError

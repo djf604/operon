@@ -4,7 +4,7 @@ import sys
 import subprocess
 import json
 try:
-    from operon._cli.subcommands import get_operon_subcommands
+    from operon._cli import get_operon_subcommands
 except ImportError:
     sys.exit()
 

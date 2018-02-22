@@ -424,6 +424,8 @@ To register an Executable node in the workflow graph, call the ``Software`` inst
 ``extra_outputs=`` can also be given to pass in respective lists of ``Data()`` input and output that aren't defined
 as a command line argument to the Executable.
 
+
+
 .. code-block:: python
 
     bwa.register(
@@ -434,13 +436,36 @@ as a command line argument to the Executable.
         extra_outputs=[Data('/path/to/bam')]
     )
 
+The ``register()`` method returns an object wrapping the Executable node's id, which can be passed to other
+``Software`` instances via the ``wait_on=`` keyword. If a ``Software`` is given other apps in its ``wait_on=``, those
+other apps will be included in the input dependencies, and so won't start running until all app **and** data
+dependencies are resolved.
+
+.. code-block:: python
+
+    first_app = first.register(
+        Parameter('-a', '1')
+    )
+
+    second.register(
+        Parameter('--output', Data('second.out').as_output())
+    )
+
+    third.register(
+        Parameter('b', Data('second.out').as_input()),
+        wait_for=[first_app]
+    )
+
+In the above example, ``third`` won't start running until both ``first`` is finished running and the output from
+``second`` called ``second.out`` is available.
+
 CodeBlock ``operon.components.CodeBlock``
 #########################################
 A ``CodeBlock`` instance wraps a Python function that can be passed ``Data`` instances in much the same way as a
 ``Software`` instance, and so can be integrated into the workflow graph. That is, a functions wrapped in a ``CodeBlock``
 will wait to execute until all its data dependencies are available.
 
-The function wrapped by a ``CodeBlock`` instance can be defined as normal and registed with ``CodeBlock.register()``,
+The function wrapped by a ``CodeBlock`` instance can be defined as normal and registered with ``CodeBlock.register()``,
 where arguments and data dependencies can be defined.
 
 .. code-block:: python
@@ -467,6 +492,9 @@ where arguments and data dependencies can be defined.
     That means that any variables or data structures declared in ``pipeline()`` can't be counted on as available in
     the body of the function. It also means that any modules the function needs to use must be explicitly imported
     by the function, even if that module has already been imported by the pipeline document.
+
+The return value of a ``CodeBlock`` is the same as that for a ``Software`` instance, and can be passed to other
+``Software`` or ``CodeBlock``\s via the ``wait_on=`` keyword argument.
 
 Parameter ``operon.components.Parameter``
 #########################################

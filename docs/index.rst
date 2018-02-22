@@ -12,6 +12,7 @@ Operon Documentation
    getting_started
    using_operon
    building_pipelines
+   api
    changelog
 
 
