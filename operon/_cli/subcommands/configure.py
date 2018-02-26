@@ -88,12 +88,15 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
             breadcrumbs = key.split('__')[1:]
 
             # Get the inner dictionary needed
-            inner = root[breadcrumbs[0]]
-            for _ in breadcrumbs[1:-1]:
-                inner = inner[_]
+            if len(breadcrumbs) > 1:
+                inner = root[breadcrumbs[0]]
+                for _ in breadcrumbs[1:-1]:
+                    inner = inner[_]
 
-            # Set value of inner dictionary
-            inner[breadcrumbs[-1]] = value
+                # Set value of inner dictionary
+                inner[breadcrumbs[-1]] = value
+            else:
+                root[breadcrumbs[0]] = value
 
         # Convert whole thing to regular dict, return
         return json.loads(json.dumps(root))

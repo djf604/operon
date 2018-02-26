@@ -6,6 +6,7 @@ from datetime import datetime
 def setup_logger(logs_dir=None):
     logger = logging.getLogger('operon.main')
     logger.setLevel(logging.DEBUG)
+    logger.propagate = False
     logformat = logging.Formatter(fmt='[{asctime}|{name}] > {message}', datefmt='%d%b%Y %H:%M:%S', style='{')
 
     if logs_dir is not None:

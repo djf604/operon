@@ -96,7 +96,7 @@ class Subcommand(BaseSubcommand):
                 )]) or dict()
 
                 # If user responds no, exit immediately
-                if proceed.get('overwrite'):
+                if proceed.get('proceed'):
                     sys.exit(EXIT_CMD_SUCCESS)
 
             for package in pipeline_dependencies:

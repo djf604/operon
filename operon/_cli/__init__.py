@@ -1,3 +1,4 @@
+import os
 import pkgutil
 from importlib import import_module
 
@@ -7,7 +8,7 @@ def get_operon_subcommands(classes=False):
         operon_subcommand
         for operon_subcommand in [
             name for _, name, _
-            in pkgutil.iter_modules(__path__)
+            in pkgutil.iter_modules([os.path.join(__path__[0], 'subcommands')])
         ]
     ]
     if not classes:
