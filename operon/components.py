@@ -16,6 +16,7 @@ from datetime import datetime
 from parsl import App
 from parsl.dataflow.error import DependencyError
 from parsl.app.errors import AppFailure, MissingOutputs, ParslError
+from ipyparallel.error import RemoteError
 import networkx as nx
 
 from operon._util.logging import setup_logger
@@ -399,7 +400,7 @@ class ParslPipeline(object):
     pipeline_config = None
 
     # Temporary directory to send stream output of un-Redirected apps
-    _pipeline_run_temp_dir = tempfile.TemporaryDirectory(suffix='__operon')
+    _pipeline_run_temp_dir = None
 
     def _run_pipeline(self, pipeline_args, pipeline_config):
         # Ensure the pipeline() method is overridden
@@ -409,6 +410,12 @@ class ParslPipeline(object):
         # Set up logs dir
         os.makedirs(pipeline_args['logs_dir'], exist_ok=True)
         setup_logger(pipeline_args['logs_dir'])
+
+        # Set up temp dir
+        ParslPipeline._pipeline_run_temp_dir = tempfile.TemporaryDirectory(
+            dir=pipeline_args['logs_dir'],
+            suffix='__operon'
+        )
 
         # Run the pipeline to populate Software instances and construct the workflow graph
         Software._pipeline_config = copy(pipeline_config)
@@ -434,19 +441,19 @@ class ParslPipeline(object):
                     break
                 time.sleep(0.01)
 
-                # Copy running set, to see if anything changes
                 precheck_running = copy(running)
 
                 # Identify finished futures
                 for running_fut in running:
-                    if running_fut.done():
+                    finished_func = 'ready' if hasattr(running_fut.parent, 'ready') else 'done'
+                    if getattr(running_fut.parent, finished_func)():
                         logger.info('{} finished running'.format(fut_map[running_fut]))
                         finished.add(running_fut)
                 running -= finished
 
                 # Identify newly running futures
                 for pending_fut in pending:
-                    if pending_fut.running():
+                    if pending_fut.parent is not None:
                         logger.info('{} started running'.format(fut_map[pending_fut]))
                         running.add(pending_fut)
                 pending -= running
@@ -461,12 +468,6 @@ class ParslPipeline(object):
         running_listener_q = queue.Queue()
         running_listener_thread = threading.Thread(target=running_listener, args=(running_listener_q, pipeline_futs))
         running_listener_thread.start()
-
-        # logger.info('These are the logger handlers!!!!!!')
-        # logger.info(logger.handlers)
-        # logger.info(logger.parent.handlers)
-        # # logger.info(logger.parent.handlers)
-        # logger.propagate = False
 
         # Wait for all apps to complete
         for name, fut in pipeline_futs:
@@ -486,6 +487,8 @@ class ParslPipeline(object):
             except KeyboardInterrupt:
                 logger.info('User aborted run')
                 break
+            except RemoteError as e:
+                logger.info('{} produced a RemoteError\n{}'.format(name, e.traceback))
             except Exception as e:
                 logger.info('{} produced a general error\n{}'.format(name, traceback.format_exc()))
 
@@ -513,12 +516,18 @@ class ParslPipeline(object):
         for captured_output in os.listdir(ParslPipeline._pipeline_run_temp_dir.name):
             capture_output_path = os.path.join(ParslPipeline._pipeline_run_temp_dir.name, captured_output)
             app_name, stream = os.path.splitext(captured_output)
-            captured_output_content = open(capture_output_path).read()
-            if captured_output_content:
-                logger.debug('Output from {stream} stream of {app_name}:\n{msg}'.format(
-                    stream=stream[1:],  # Get extension of captured stream, without period
-                    app_name=app_name,
-                    msg=captured_output_content
+            try:
+                captured_output_content = open(capture_output_path).read()
+                if captured_output_content:
+                    logger.debug('Output from {stream} stream of {app_name}:\n{msg}'.format(
+                        stream=stream[1:],  # Get extension of captured stream, without period
+                        app_name=app_name,
+                        msg=captured_output_content
+                    ))
+            except FileNotFoundError:
+                logger.debug('Output from {stream} of {app_name} could not be retrieved'.format(
+                    stream=stream[1:],
+                    app_name=app_name
                 ))
 
     def _get_dfk(self, pipeline_args, pipeline_config):

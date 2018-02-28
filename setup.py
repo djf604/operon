@@ -13,7 +13,7 @@ setup(
     url='https://github.com/djf604/operon',
     download_url='https://github.com/djf604/operon/tarball/{}'.format(operon.__version__),
     packages=find_packages(),
-    install_requires=['libsubmit', 'parsl==0.4.0', 'networkx==2.0', 'inquirer'],
+    install_requires=['libsubmit', 'parsl==0.4.0', 'ipyparallel', 'networkx==2.0', 'inquirer'],
     dependency_links=['git+https://github.com/djf604/python-inquirer'],
     entry_points={
         'console_scripts': [
