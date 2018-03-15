@@ -1,17 +1,14 @@
 import os
-import sys
 import json
 import time
 import queue
 import logging
 import tempfile
 import threading
-import subprocess
 import traceback
 from copy import copy
 from collections import namedtuple
 from datetime import datetime
-
 
 from parsl import App
 from parsl.dataflow.error import DependencyError
@@ -213,6 +210,8 @@ class Data(object):
     OUTPUT = 1
 
     def __new__(cls, path):
+        if not path:
+            return ''
         if path in cls._data:
             return cls._data[path]
         return super(Data, cls).__new__(cls)
@@ -441,10 +440,12 @@ class ParslPipeline(object):
                     break
                 time.sleep(0.01)
 
+                # Copy running set, to see if anything changes
                 precheck_running = copy(running)
 
                 # Identify finished futures
                 for running_fut in running:
+                    # ready is for IPP, done is for threads (I don't know about other executors)
                     finished_func = 'ready' if hasattr(running_fut.parent, 'ready') else 'done'
                     if getattr(running_fut.parent, finished_func)():
                         logger.info('{} finished running'.format(fut_map[running_fut]))
@@ -492,13 +493,17 @@ class ParslPipeline(object):
             except Exception as e:
                 logger.info('{} produced a general error\n{}'.format(name, traceback.format_exc()))
 
-        # All apps are complete, so run cleanup
-        if tmp_files:
-            subprocess.call('rm {} 2>/dev/null || exit 0'.format(' '.join(tmp_files)), shell=True)
-
         # All apps are complete, so kill running listener thread
         running_listener_q.put('kill')
         running_listener_thread.join()
+
+        # All apps are complete, so run cleanup
+        if tmp_files:
+            for tmp_file_path in tmp_files:
+                try:
+                    os.remove(tmp_file_path)
+                except Exception:
+                    pass  # If a file can't be delete, just leave it a move on
 
         # Record end time and elapsed time
         end_time = datetime.now()
