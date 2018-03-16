@@ -44,7 +44,7 @@ class Subcommand(BaseSubcommand):
             pipeline_instance.arguments(pipeline_args_parser)
             pipeline_args = vars(pipeline_args_parser.parse_args(subcommand_args[1:]))
 
-            pipeline_instance._run_pipeline(
+            pipeline_instance._run_single_pipeline(
                 pipeline_args=pipeline_args,
                 pipeline_config=parse_pipeline_config(pipeline_args['pipeline_config'])
             )

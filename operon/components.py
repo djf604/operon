@@ -401,32 +401,58 @@ class ParslPipeline(object):
     # Temporary directory to send stream output of un-Redirected apps
     _pipeline_run_temp_dir = None
 
-    def _run_pipeline(self, pipeline_args, pipeline_config):
+    def _run_batch_pipeline(self, run_args, pipeline_config, batch_pipeline_args):
+        pass
+
+    def _run_single_pipeline(self, pipeline_args, pipeline_config):
+        # Setup pipeline run
+        ParslPipeline._setup_run(
+            logs_dir=pipeline_args['logs_dir'],
+            pipeline_config=pipeline_config,
+            pipeline_class=self.__class__
+        )
+
+        # Run pipeline to register Software and assemble workflow graph
+        self.pipeline(pipeline_args, pipeline_config)
+        workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
+
+        # Register apps and data with Parsl, get all app futures and temporary files
+        pipeline_futs, tmp_files = ParslPipeline._register_workflow(
+            workflow_graph=workflow_graph,
+            dfk=ParslPipeline._get_dfk(
+                pipeline_args_parsl_config=pipeline_args['parsl_config'],
+                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
+                pipeline_default_parsl_config=self.parsl_configuration()
+            )
+        )
+
+        # Monitor the run to completion
+        ParslPipeline._monitor_run(
+            pipeline_futs=pipeline_futs,
+            tmp_files=tmp_files
+        )
+
+    @staticmethod
+    def _setup_run(logs_dir, pipeline_config, pipeline_class):
         # Ensure the pipeline() method is overridden
-        if 'pipeline' not in vars(self.__class__):
+        if 'pipeline' not in vars(pipeline_class):
             raise MalformedPipelineError('Pipeline has no method pipeline()')
 
         # Set up logs dir
-        os.makedirs(pipeline_args['logs_dir'], exist_ok=True)
-        setup_logger(pipeline_args['logs_dir'])
+        os.makedirs(logs_dir, exist_ok=True)
+        setup_logger(logs_dir)
 
         # Set up temp dir
         ParslPipeline._pipeline_run_temp_dir = tempfile.TemporaryDirectory(
-            dir=pipeline_args['logs_dir'],
+            dir=logs_dir,
             suffix='__operon'
         )
 
-        # Run the pipeline to populate Software instances and construct the workflow graph
+        # Give pipeline config to Software class
         Software._pipeline_config = copy(pipeline_config)
-        self.pipeline(pipeline_args, pipeline_config)
-        workflow_graph = self._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
-        # Register apps and data with Parsl, get all app futures and temporary files
-        pipeline_futs, tmp_files = self._register_workflow(
-            workflow_graph,
-            self._get_dfk(pipeline_args, pipeline_config)
-        )
-
+    @staticmethod
+    def _monitor_run(pipeline_futs, tmp_files):
         # Record start time
         start_time = datetime.now()
         logger.info('Started pipeline run\n@operon_start {}'.format(str(start_time)))
@@ -535,17 +561,18 @@ class ParslPipeline(object):
                     app_name=app_name
                 ))
 
-    def _get_dfk(self, pipeline_args, pipeline_config):
+    @staticmethod
+    def _get_dfk(pipeline_args_parsl_config, pipeline_config_parsl_config, pipeline_default_parsl_config):
         # 1) Config defined at runtime on the command line
-        if pipeline_args['parsl_config'] is not None:
-            loaded_config = cycle_config_input_options(pipeline_args['parsl_config'])
+        if pipeline_args_parsl_config is not None:
+            loaded_config = cycle_config_input_options(pipeline_args_parsl_config)
             if loaded_config is not None:
                 logger.info('Loaded Parsl config from command line arguments')
                 return loaded_config
 
         # 2) Config defined for this pipeline in the pipeline configuration
-        if pipeline_config.get('parsl_config'):
-            loaded_config = cycle_config_input_options(pipeline_config['parsl_config'])
+        if pipeline_config_parsl_config:
+            loaded_config = cycle_config_input_options(pipeline_config_parsl_config)
             if loaded_config is not None:
                 logger.info('Loaded Parsl config from pipeline config')
                 return loaded_config
@@ -567,10 +594,10 @@ class ParslPipeline(object):
                     logger.error('Bad Parsl config when loading from installation default, trying the next option')
 
         # 4) Config defined by the pipeline developer as a default, if no user config exists
-        if self.parsl_configuration():
+        if pipeline_default_parsl_config:
             logger.info('Loaded Parsl config from pipeline default')
             try:
-                return direct_config(self.parsl_configuration())
+                return direct_config(pipeline_default_parsl_config)
             except ValueError:
                 pass  # Silently fail, move on to next option
 
@@ -578,7 +605,8 @@ class ParslPipeline(object):
         logger.info('Loaded Parsl config using package default (2 basic threads)')
         return dfk_with_config['basic-threads-2']()
 
-    def _register_workflow(self, workflow_graph, dfk):
+    @staticmethod
+    def _register_workflow(workflow_graph, dfk):
         # Instantiate the App Factories
         @App('python', dfk)
         def _pythonapp(func_, func_args, func_kwargs, **kwargs):
@@ -676,7 +704,8 @@ class ParslPipeline(object):
 
         return app_futures, tmp_files
 
-    def _assemble_graph(self, blueprints):
+    @staticmethod
+    def _assemble_graph(blueprints):
         # Initialize a directed graph
         digraph = nx.DiGraph()
 
