@@ -402,7 +402,32 @@ class ParslPipeline(object):
     _pipeline_run_temp_dir = None
 
     def _run_batch_pipeline(self, run_args, pipeline_config, batch_pipeline_args):
-        pass
+        # Setup pipeline run
+        ParslPipeline._setup_run(
+            logs_dir=run_args['logs_dir'],
+            pipeline_config=pipeline_config,
+            pipeline_class=self.__class__
+        )
+
+        for pipeline_args in batch_pipeline_args:
+            self.pipeline(pipeline_args, pipeline_config)
+        workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
+
+        # Register apps and data with Parsl, get all app futures and temporary files
+        pipeline_futs, tmp_files = ParslPipeline._register_workflow(
+            workflow_graph=workflow_graph,
+            dfk=ParslPipeline._get_dfk(
+                pipeline_args_parsl_config=run_args['parsl_config'],
+                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
+                pipeline_default_parsl_config=self.parsl_configuration()
+            )
+        )
+
+        # Monitor the run to completion
+        ParslPipeline._monitor_run(
+            pipeline_futs=pipeline_futs,
+            tmp_files=tmp_files
+        )
 
     def _run_single_pipeline(self, pipeline_args, pipeline_config):
         # Setup pipeline run
