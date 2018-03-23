@@ -12,7 +12,7 @@ def get_operon_subcommands(classes=False):
         ]
     ]
     if not classes:
-        return operon_subcommands
+        return [o.replace('_', '-') for o in operon_subcommands]
 
     return {
         operon_subcommand: fetch_subcommand_class(operon_subcommand)

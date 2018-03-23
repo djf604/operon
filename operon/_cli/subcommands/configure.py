@@ -274,8 +274,8 @@ class Subcommand(BaseSubcommand):
             except (KeyboardInterrupt, EOFError):
                 sys.stderr.write('\nUser aborted configuration.\n')
                 sys.exit(EXIT_CMD_SUCCESS)
-            except AttributeError:
-                raise MalformedPipelineConfigError('Something about the configuration is malformed')
+            except AttributeError as e:
+                raise MalformedPipelineConfigError('Something about the configuration is malformed: {}'.format(e))
 
             # Write config out to file
             try:

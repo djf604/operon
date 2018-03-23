@@ -46,7 +46,7 @@ def completer():
             stub=stub_token
         )
     elif num_completed_tokens == 2:
-        if phrase[-2] in {'run', 'configure', 'show', 'uninstall'}:
+        if phrase[-2] in {'run', 'batch-run', 'configure', 'show', 'uninstall'}:
             completion_options = get_completion_options(
                 options=get_pipeline_options(),
                 stub=stub_token

@@ -37,7 +37,7 @@ def execute_from_command_line(argv=None):
             parser.print_help()
             sys.exit(0)
         try:
-            operon_subcommand_classes[subcommand].run(argv[2:])
+            operon_subcommand_classes[subcommand.replace('-', '_')].run(argv[2:])
         except Exception as e:
             sys.stderr.write('Operon encountered an error when trying to execute {}:\n'.format(subcommand))
             sys.stderr.write(str(e) + '\n')
