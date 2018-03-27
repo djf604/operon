@@ -42,7 +42,7 @@ def completer():
     completion_options = ''
     if num_completed_tokens == 1:
         completion_options = get_completion_options(
-            options=' '.join(get_operon_subcommands()),
+            options=' '.join(get_operon_subcommands().replace('_', '-')),
             stub=stub_token
         )
     elif num_completed_tokens == 2:
