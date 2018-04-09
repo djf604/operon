@@ -156,8 +156,9 @@ be included or not.
 
 Without Headers
 ---------------
-If the flag ``--literal-input`` is given to ``batch-run``, then the header lines does not need to exist and each line
-is taken as a literal command line string which will be interpreted as if typed directly into the command line.
+If the flag ``--literal-input`` is given to ``batch-run``, then the header line does not need to exist and each line
+is taken as a literal command line string which will be interpreted as if typed directly into the command line
+(starting with arguments to the pipeline).
 
 .. code-block:: text
 
