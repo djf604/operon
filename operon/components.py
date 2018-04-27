@@ -21,10 +21,13 @@ from operon._util.home import get_operon_home
 from operon._util.configs import dfk_with_config, direct_config, cycle_config_input_options
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
 from operon._util.errors import MalformedPipelineError
+from operon.meta import Meta
 
 SOURCE = 0
 TARGET = 1
 EXIT_ERROR = 1
+PYTHON_APP = 0
+BASH_APP = 1
 logger = logging.getLogger('operon.main')
 
 # import parsl
@@ -57,7 +60,7 @@ class Software(_ParslAppBlueprint):
     _software_paths = set()
     _pipeline_config = None
 
-    def __init__(self, name, path=None, subprogram='', success_on=None):
+    def __init__(self, name, path=None, subprogram='', success_on=None, meta=None):
         self.name = name
         if path is None:
             try:
@@ -67,6 +70,7 @@ class Software(_ParslAppBlueprint):
         self.path = ' '.join((path, str(subprogram))) if subprogram else path
         self.basename = os.path.basename(path).replace(' ', '_')
         self.success_on = success_on or ['0']
+        self.default_meta = meta or dict()
 
         # Add path to class collection of software paths
         Software._software_paths.add(self.path)
@@ -107,12 +111,23 @@ class Software(_ParslAppBlueprint):
         Does most of the work for ``register()``, but this method should only be used directly
         inside of a ``Pipe`` object.
         """
+        """
+        The meta dictionary:
+        {
+            'resources': {
+                'cpu': <Number of CPUs>,
+                'mem': <Amount of memory>
+            },
+            'site': <Name of the site to run this app>
+        }
+        """
         app_blueprint = {
             'id': '{}_{}'.format(self.basename, _ParslAppBlueprint.get_id()),
             'type': 'bash',
             'name': kwargs.get('action', self.path),
             'cmd': '',
             'success_on': self.success_on,
+            'meta': dict(),
             'inputs': list(),
             'outputs': list(),
             'wait_on': list(),
@@ -186,6 +201,9 @@ class Software(_ParslAppBlueprint):
                 ParslPipeline._pipeline_run_temp_dir.name,
                 '{}.stderr'.format(app_blueprint['id'])
             )
+
+        # Store resource meta
+        app_blueprint['meta'] = kwargs.get('meta') or self.default_meta
 
         # print('Created app blueprint: {}'.format(app_blueprint))
         return app_blueprint
@@ -355,7 +373,7 @@ class CodeBlock(_ParslAppBlueprint):
     """
     @staticmethod
     def register(func, args=None, kwargs=None, inputs=None,
-                 outputs=None, wait_on=None, stdout=None, stderr=None, **_kwargs):
+                 outputs=None, wait_on=None, stdout=None, stderr=None, **kwargs_):
         """
         Registers a run of the function ``func`` in the Parsl workflow.
 
@@ -380,7 +398,8 @@ class CodeBlock(_ParslAppBlueprint):
             'outputs': list(map(str, outputs)) if outputs else list(),
             'wait_on': list(map(str, wait_on)) if wait_on else list(),
             'stdout': stdout,
-            'stderr': stderr
+            'stderr': stderr,
+            'meta': kwargs_.get('meta', dict())
         }
         logger.debug('Registered function {}\nArgs: {}\nKwargs: {}'.format(
             func.__name__,
@@ -414,13 +433,18 @@ class ParslPipeline(object):
         workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
         # Register apps and data with Parsl, get all app futures and temporary files
+        config_type, parsl_config = ParslPipeline._choose_parsl_config(
+            pipeline_args_parsl_config=run_args['parsl_config'],
+            pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
+            pipeline_default_parsl_config=self.parsl_configuration()
+        )
         pipeline_futs, tmp_files = ParslPipeline._register_workflow(
             workflow_graph=workflow_graph,
             dfk=ParslPipeline._get_dfk(
-                pipeline_args_parsl_config=run_args['parsl_config'],
-                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
-                pipeline_default_parsl_config=self.parsl_configuration()
-            )
+                config_type=config_type,
+                parsl_config=parsl_config
+            ),
+            parsl_config=config_type if config_type == 'builtin' else parsl_config
         )
 
         # Monitor the run to completion
@@ -442,13 +466,18 @@ class ParslPipeline(object):
         workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
         # Register apps and data with Parsl, get all app futures and temporary files
+        config_type, parsl_config = ParslPipeline._choose_parsl_config(
+            pipeline_args_parsl_config=pipeline_args['parsl_config'],
+            pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
+            pipeline_default_parsl_config=self.parsl_configuration()
+        )
         pipeline_futs, tmp_files = ParslPipeline._register_workflow(
             workflow_graph=workflow_graph,
             dfk=ParslPipeline._get_dfk(
-                pipeline_args_parsl_config=pipeline_args['parsl_config'],
-                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
-                pipeline_default_parsl_config=self.parsl_configuration()
-            )
+                config_type=config_type,
+                parsl_config=parsl_config
+            ),
+            parsl_config=config_type if config_type == 'builtin' else parsl_config
         )
 
         # Monitor the run to completion
@@ -587,9 +616,26 @@ class ParslPipeline(object):
                 ))
 
     @staticmethod
-    def _get_dfk(pipeline_args_parsl_config, pipeline_config_parsl_config, pipeline_default_parsl_config):
+    def _choose_parsl_config(pipeline_args_parsl_config, pipeline_config_parsl_config, pipeline_default_parsl_config):
+        """
+        Given the complete set of possible user inputs, this selects the first valid config in the
+        Parsl config hierarchy:
+
+            * Command line at runtime
+            * Pipeline configuration
+            * Installation default, in ``OPERON_HOME``
+            * Pipeline default
+            * Built-in 2 basic threads
+
+        :param pipeline_args_parsl_config:
+        :param pipeline_config_parsl_config:
+        :param pipeline_default_parsl_config:
+        :return: (str, str) first element is either 'builtin' or 'json', second is the configuration as the
+                 builtin key or a raw json string
+        """
         # 1) Config defined at runtime on the command line
         if pipeline_args_parsl_config is not None:
+            # loaded_config is (str, str): (parsl config type, parl_config_value)
             loaded_config = cycle_config_input_options(pipeline_args_parsl_config)
             if loaded_config is not None:
                 logger.info('Loaded Parsl config from command line arguments')
@@ -612,38 +658,110 @@ class ParslPipeline(object):
                     init_parsl_config = json.load(init_parsl_config_json)
                     if 'use' not in init_parsl_config:
                         logger.info('Loaded Parsl config from installation default')
-                        return direct_config(init_parsl_config)
+                        return 'json', init_parsl_config_json.read().strip()
                 except json.JSONDecodeError:
                     logger.error('Malformed JSON when loading from installation default, trying next option')
-                except ValueError:
-                    logger.error('Bad Parsl config when loading from installation default, trying the next option')
+                # except ValueError:
+                #     logger.error('Bad Parsl config when loading from installation default, trying the next option')
 
         # 4) Config defined by the pipeline developer as a default, if no user config exists
         if pipeline_default_parsl_config:
             logger.info('Loaded Parsl config from pipeline default')
-            try:
-                return direct_config(pipeline_default_parsl_config)
-            except ValueError:
-                pass  # Silently fail, move on to next option
+            return 'json', json.dumps(pipeline_default_parsl_config)
+            # except ValueError:
+            #     pass  # Silently fail, move on to next option
 
         # 5) Config used if all above are absent, always run as a Thread Pool with 2 workers
         logger.info('Loaded Parsl config using package default (2 basic threads)')
-        return dfk_with_config['basic-threads-2']()
+        return 'builtin', 'basic-threads-2'
+
 
     @staticmethod
-    def _register_workflow(workflow_graph, dfk):
-        # Instantiate the App Factories
-        @App('python', dfk)
+    def _get_dfk(config_type, parsl_config):
+        if config_type.strip().lower() == 'builtin':
+            return dfk_with_config[parsl_config]()
+        return direct_config(config=json.loads(parsl_config))
+
+    @staticmethod
+    def _generate_site_app_factories(dfk, site_name=None):
+        sites_ = 'all' if site_name is None else [site_name]
+
+        @App('python', dfk, sites=sites_)
         def _pythonapp(func_, func_args, func_kwargs, **kwargs):
             return func_(*func_args, **func_kwargs)
 
-        @App('bash', dfk)
+        @App('bash', dfk, sites=sites_)
         def _bashapp(cmd, success_on=None, **kwargs):
             return ('scodes=({exit_codes});{cmd};ecode=$?;for i in "${{{{scodes[@]}}}}";'
                     'do if [ "$i" = $ecode ];then exit 0;fi;done;exit 1').format(
                 exit_codes=' '.join(map(str, success_on or ['0'])),
                 cmd=cmd
             )
+
+        return _pythonapp, _bashapp
+
+    @staticmethod
+    def _register_workflow(workflow_graph, dfk, parsl_config: str):
+        """
+        For right now we will keep track of all unique combinations of resource requirements and
+        how many of each. The maxBlocks can then be set to the number of each resource requirement. In the
+        future we can try to be smarter by examining the workflow graph and deciding how many could
+        possibly ever be running concurrently.
+
+        Pipeline is single, Config is single
+            * Assign all Apps to null site
+            * @App('python', dfk)  <-- No site=
+
+        Pipeline is single, Config is multi
+            * Assign all Apps to null site (will be randomly assigned among configured sites)
+            * Log warning of mismatch
+
+        Pipeline is multi, Config is single
+            * Assign all Apps to null site
+            * Log warning of mismatch
+
+        Pipeline is multi, Config is multi, perfect match
+            * Assign all Apps to their appropriate site
+
+        Pipeline is multi, Config is multi, some match
+            * Assign apps that can to their appropriate sites
+            * For the remaining, assign to first site
+            * Log warning of mismatch
+
+        Pipeline is multi, Config is multi, no matches
+            * Assign all apps to first site
+            * Log warning of mismatch
+
+        :param workflow_graph:
+        :param dfk:
+        :return:
+        """
+        is_single_parsl_config = parsl_config == 'builtin' or len(json.loads(parsl_config)['sites']) <= 1
+
+        # Check to see if Pipeline is single or multi
+        pipeline_sites = set(Meta._sites.keys())  # Start with anything defined in Meta
+        for node_id in workflow_graph.nodes():
+            meta_resources = workflow_graph.node[node_id].get('blueprint', {}).get('meta', {}).get('resources')
+            if meta_resources is not None:
+                pipeline_sites.add('resources_({cpu},{mem})'.format(
+                    cpu=meta_resources['cpu'],
+                    mem=meta_resources['mem']
+                ))
+        is_single_pipeline_meta = len(pipeline_sites) <= 1
+
+        logger.debug('Pipeline is {}-{}'.format(
+            'single' if is_single_pipeline_meta else 'multi',
+            'single' if is_single_parsl_config else 'multi',
+        ))
+
+        app_factories = dict()
+        # At a minimum define the __all__ site, which is a dfk with no specific site
+        app_factories['__all__'] = ParslPipeline._generate_site_app_factories(dfk)
+
+        # If we have multiple sites, define them
+        if not all((is_single_parsl_config, is_single_pipeline_meta)):
+            for site_name in [c['site'] for c in json.loads(parsl_config)['sites']]:
+                app_factories[site_name] = ParslPipeline._generate_site_app_factories(dfk, site_name=site_name)
 
         # Some data containers
         app_futures, data_futures = list(), dict()
@@ -690,8 +808,29 @@ class ParslPipeline(object):
                     if app_nodes_registered.get(wait_on_app_id)
                 ])
 
+            # Select site to run this app on
+            site_assignment = '__all__'
+            if not all((is_single_parsl_config, is_single_pipeline_meta)):
+                # This is a multi-multi run, we might be able to assign to a site
+                # Giving a name defined in Meta takes precedence
+                meta_site = _app_blueprint.get('meta', {}).get('site')
+                if meta_site is not None and meta_site in app_factories:
+                    site_assignment = meta_site
+                else:
+                    # Try an implicit resource site
+                    meta_resources = _app_blueprint.get('meta', {}).get('resources')
+                    if meta_resources is not None:
+                        implicit_resource_site = 'resources_({cpu},{mem})'.format(
+                            cpu=meta_resources['cpu'],
+                            mem=meta_resources['mem']
+                        )
+                        if implicit_resource_site in app_factories:
+                            site_assignment = implicit_resource_site
+            logger.info('{} assigned to site {}'.format(_app_blueprint['id'], site_assignment))
+
+            # Create the App future with a specific site App factory
             if _app_blueprint['type'] == 'bash':
-                _app_future = _bashapp(
+                _app_future = app_factories[site_assignment][BASH_APP](
                     cmd=_app_blueprint['cmd'],
                     success_on=_app_blueprint['success_on'],
                     inputs=_app_inputs,
@@ -700,7 +839,7 @@ class ParslPipeline(object):
                     stderr=_app_blueprint['stderr']
                 )
             else:
-                _app_future = _pythonapp(
+                _app_future = app_factories[site_assignment][PYTHON_APP](
                     func_=_app_blueprint['func'],
                     func_args=_app_blueprint['args'],
                     func_kwargs=_app_blueprint['kwargs'],

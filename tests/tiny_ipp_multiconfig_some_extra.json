@@ -1,0 +1,103 @@
+{
+    "sites": [{
+        "site": "resources_(1,1G)",
+        "auth": {
+            "channel": "local",
+            "username": "dfitzgerald",
+            "scriptDir": "/home/dfitzgerald/.ippscripts"
+        },
+        "execution": {
+            "executor": "ipp",
+            "provider": "local",
+            "block": {
+                "nodes": 1,
+                "taskBlocks": 1,
+                "initBlocks": 1,
+                "maxBlocks": 4,
+                "minBlocks": 1,
+                "walltime": "00:01:00"
+            }
+        }
+    },
+        {
+            "site": "resources_(3,3G)",
+            "auth": {
+                "channel": "local",
+                "username": "dfitzgerald",
+                "scriptDir": "/home/dfitzgerald/.ippscripts"
+            },
+            "execution": {
+                "executor": "ipp",
+                "provider": "local",
+                "block": {
+                    "nodes": 1,
+                    "taskBlocks": 1,
+                    "initBlocks": 1,
+                    "maxBlocks": 4,
+                    "minBlocks": 1,
+                    "walltime": "00:01:00"
+                }
+            }
+        },
+    {
+            "site": "resources_(2,2G)",
+            "auth": {
+                "channel": "local",
+                "username": "dfitzgerald",
+                "scriptDir": "/home/dfitzgerald/.ippscripts"
+            },
+            "execution": {
+                "executor": "ipp",
+                "provider": "local",
+                "block": {
+                    "nodes": 1,
+                    "taskBlocks": 1,
+                    "initBlocks": 1,
+                    "maxBlocks": 4,
+                    "minBlocks": 1,
+                    "walltime": "00:01:00"
+                }
+            }
+        },
+    {
+            "site": "extra",
+            "auth": {
+                "channel": "local",
+                "username": "dfitzgerald",
+                "scriptDir": "/home/dfitzgerald/.ippscripts"
+            },
+            "execution": {
+                "executor": "ipp",
+                "provider": "local",
+                "block": {
+                    "nodes": 1,
+                    "taskBlocks": 1,
+                    "initBlocks": 1,
+                    "maxBlocks": 4,
+                    "minBlocks": 1,
+                    "walltime": "00:01:00"
+                }
+            }
+        },
+    {
+            "site": "Jerry",
+            "auth": {
+                "channel": "local",
+                "username": "dfitzgerald",
+                "scriptDir": "/home/dfitzgerald/.ippscripts"
+            },
+            "execution": {
+                "executor": "ipp",
+                "provider": "local",
+                "block": {
+                    "nodes": 1,
+                    "taskBlocks": 1,
+                    "initBlocks": 1,
+                    "maxBlocks": 4,
+                    "minBlocks": 1,
+                    "walltime": "00:01:00"
+                }
+            }
+        }],
+    "globals": {"lazyErrors": true}
+}
