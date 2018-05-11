@@ -8,7 +8,7 @@ operon_python_dependencies = [
     'ipyparallel',
     'networkx==2.0',
     'blessings>=1.6',
-    'readchar==0.7'
+    'readchar==0.1.0'
 ]
 
 setup(
