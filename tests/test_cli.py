@@ -33,6 +33,7 @@ def operon_install(operon_root):
 
 
 def operon_init(args='', tmpdir=None, cleanup=True):
+    print(os.path.expanduser('~'))
     subprocess.call('operon init {}'.format(args), shell=True)
 
     if args != 'help':
@@ -63,7 +64,6 @@ def operon_init(args='', tmpdir=None, cleanup=True):
         if cleanup:
             subprocess.call('rm -rf {}'.format(tmpdir or args), shell=True)
     return True
-
 
 
 def test_cli(tmpdir_factory):

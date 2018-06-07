@@ -404,6 +404,27 @@ instead, if desired.
 ``Data`` instances can be used in-place anywhere a filesystem path would be passed; that includes both ``Parameter``
 and ``Redirect`` objects.
 
+Meta ``operon.meta.Meta``
+#########################
+The ``Meta`` class has only one method ``define_site()`` used to give a name to a resource configuration.
+
+.. code-block:: python
+
+    from operon.meta import Meta
+
+    Meta.define_site(name='small_site', resources={
+        'cpu': '2',
+        'mem': '2G'
+    })
+
+    Meta.define_site(name='large_site', resources={
+        'cpu': '8',
+        'mem': '50G'
+    })
+
+The value passed to resources must be a dictionary with the keys ``cpu`` and ``mem`` as in the above example. The value
+of ``mem`` should be an integer (as a string) followed by one of ``M``, ``G``, or ``T``.
+
 Software ``operon.components.Software``
 #######################################
 A ``Software`` instance is an abstraction of an executable program external to the pipeline.
@@ -424,6 +445,8 @@ To register an Executable node in the workflow graph, call the ``Software`` inst
 ``extra_outputs=`` can also be given to pass in respective lists of ``Data()`` input and output that aren't defined
 as a command line argument to the Executable.
 
+
+
 .. code-block:: python
 
     bwa.register(
@@ -434,13 +457,86 @@ as a command line argument to the Executable.
         extra_outputs=[Data('/path/to/bam')]
     )
 
+The ``register()`` method returns an object wrapping the Executable node's id, which can be passed to other
+``Software`` instances via the ``wait_on=`` keyword. If a ``Software`` is given other apps in its ``wait_on=``, those
+other apps will be included in the input dependencies, and so won't start running until all app **and** data
+dependencies are resolved.
+
+.. code-block:: python
+
+    first_app = first.register(
+        Parameter('-a', '1')
+    )
+
+    second.register(
+        Parameter('--output', Data('second.out').as_output())
+    )
+
+    third.register(
+        Parameter('b', Data('second.out').as_input()),
+        wait_for=[first_app]
+    )
+
+In the above example, ``third`` won't start running until both ``first`` is finished running and the output from
+``second`` called ``second.out`` is available.
+
+Multisite Pipelines
+-------------------
+For many workflows, the resource requirements of its software won't be uniform. One solution is to calculate the
+largest resource need and allocate that to every software, but this leads to a large amount of unused resources. A
+better solution is to define resource pools of varying size and assign software to an appropriate pool. This can be
+done with the ``meta=`` keyword argument in two ways.
+
+The developer can define a resource configuration with a call to ``Meta.define_site()`` and then pass that name to the
+``meta=`` keyword argument:
+
+.. code-block:: python
+
+    from operon.components import Software
+    from operon.meta import Meta
+
+    Meta.define_site(name='small_site', resources={
+        'cpu': '2',
+        'mem': '2G'
+    })
+
+    soft1 = Software('soft1')
+    soft1.register(
+        Parameter('-a', '1'),
+        Parameter('-b', '2'),
+        meta={
+            'site': 'small_site'  # Matches the above Meta definition
+        }
+    )
+
+The developer can also define only the resource requirements of a given software at the time of registration:
+
+.. code-block:: python
+
+    from operon.components import Software
+
+    soft1 = Software('soft1')
+    soft1.register(
+        Parameter('-a', '1'),
+        Parameter('-b', '2'),
+        meta={
+            'resources': {
+                'cpu': '2',
+                'mem': '2G'
+            }
+        }
+    )
+
+The above implicity defines a site called ``resources_(2,2G)``. For notes on how a multisite pipeline changes the
+Parsl configuration, refer to the section on :ref:`Parsl configuration <parsl_configuration>`.
+
 CodeBlock ``operon.components.CodeBlock``
 #########################################
 A ``CodeBlock`` instance wraps a Python function that can be passed ``Data`` instances in much the same way as a
 ``Software`` instance, and so can be integrated into the workflow graph. That is, a functions wrapped in a ``CodeBlock``
 will wait to execute until all its data dependencies are available.
 
-The function wrapped by a ``CodeBlock`` instance can be defined as normal and registed with ``CodeBlock.register()``,
+The function wrapped by a ``CodeBlock`` instance can be defined as normal and registered with ``CodeBlock.register()``,
 where arguments and data dependencies can be defined.
 
 .. code-block:: python
@@ -467,6 +563,9 @@ where arguments and data dependencies can be defined.
     That means that any variables or data structures declared in ``pipeline()`` can't be counted on as available in
     the body of the function. It also means that any modules the function needs to use must be explicitly imported
     by the function, even if that module has already been imported by the pipeline document.
+
+The return value of a ``CodeBlock`` is the same as that for a ``Software`` instance, and can be passed to other
+``Software`` or ``CodeBlock``\s via the ``wait_on=`` keyword argument.
 
 Parameter ``operon.components.Parameter``
 #########################################

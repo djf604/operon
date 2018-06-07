@@ -2,6 +2,15 @@ from setuptools import setup, find_packages
 
 import operon
 
+operon_python_dependencies = [
+    'libsubmit',
+    'parsl==0.4.0',
+    'ipyparallel',
+    'networkx==2.0',
+    'blessings>=1.6',
+    'readchar==0.1.0'
+]
+
 setup(
     name='Operon',
     version=operon.__version__,
@@ -13,8 +22,7 @@ setup(
     url='https://github.com/djf604/operon',
     download_url='https://github.com/djf604/operon/tarball/{}'.format(operon.__version__),
     packages=find_packages(),
-    install_requires=['libsubmit', 'parsl==0.3.1', 'networkx==2.0', 'inquirer'],
-    dependency_links=['git+https://github.com/djf604/python-inquirer'],
+    install_requires=operon_python_dependencies,
     entry_points={
         'console_scripts': [
             'operon = operon._util:execute_from_command_line'

@@ -60,7 +60,7 @@ def load_pipeline_file(pipeline_filepath):
     :param pipeline_filepath:
     :return:
     """
-    spec = spec_from_file_location('operon.pipeline', pipeline_filepath)
+    spec = spec_from_file_location('__operon.pipeline', pipeline_filepath)
     mod = module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

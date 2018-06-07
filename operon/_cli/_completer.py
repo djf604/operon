@@ -4,7 +4,7 @@ import sys
 import subprocess
 import json
 try:
-    from operon._cli.subcommands import get_operon_subcommands
+    from operon._cli import get_operon_subcommands
 except ImportError:
     sys.exit()
 
@@ -42,11 +42,11 @@ def completer():
     completion_options = ''
     if num_completed_tokens == 1:
         completion_options = get_completion_options(
-            options=' '.join(get_operon_subcommands()),
+            options=' '.join(get_operon_subcommands().replace('_', '-')),
             stub=stub_token
         )
     elif num_completed_tokens == 2:
-        if phrase[-2] in {'run', 'configure', 'show', 'uninstall'}:
+        if phrase[-2] in {'run', 'batch-run', 'configure', 'show', 'uninstall'}:
             completion_options = get_completion_options(
                 options=get_pipeline_options(),
                 stub=stub_token

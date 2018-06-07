@@ -87,14 +87,16 @@ To run an installed pipeline::
 The set of accepted ``pipeline-options`` is defined by the pipeline itself and are meant to be values that change from
 run to run, such as input files, metadata, etc. Three options will always exist:
 
-* ``pipeline-config`` can point to a pipeline config to use for this run only
-* ``parsl-config`` can point to a file containing JSON that represents a Parsl config to use for this run only
-* ``logs-dir`` can point to a location where log files from this run should be deposited; if it doesn't exist, it
+* ``--pipeline-config`` can point to a pipeline config to use for this run only
+* ``--parsl-config`` can point to a file containing JSON that represents a Parsl config to use for this run only
+* ``--logs-dir`` can point to a location where log files from this run should be deposited; if it doesn't exist, it
   will be created; defaults to the currect directory
 
 When an Operon pipeline is run, under the hood it creates a Parsl workflow which can be run in many different ways
 depending on the accompanying Parl configuration. This means that while the definition for a pipeline run with the
 ``run`` subprogram is consistent, that actual execution model may vary if the Parsl configuration varies.
+
+.. _parsl_configuration:
 
 Parsl Configuration
 *******************
@@ -113,7 +115,63 @@ The ``run`` subprogram attempts to pull a Parsl configuration from the user in t
 4. A default parsl configuration provided by the pipeline
 5. A package default parsl configuration of 8 workers using Python threads
 
-For more detailed information, refer to AnotherPage
+The Parsl configuration can contain multiple sites, each with different models of execution and different available
+resources. If a multisite Parsl configuration is provided to Operon, it will try to match up the site names as best as
+possible and execute software on appropriate sites. Any software which can't find a Parsl configuration site match will
+run in a random site. The set of site names the pipeline expects is output as a part of ``operon show``.
+
+For more detailed information, refer to the
+`Parsl documentation <http://parsl.readthedocs.io/en/latest/userguide/configuring.html>`_ on the subject.
+
+Run a Pipeline in Batch
+^^^^^^^^^^^^^^^^^^^^^^^
+A common use case is to run many samples or input units independently through the same pipeline. The ``batch-run``
+subcommand allows this use case and gives the whole run a common pool of resouces::
+
+    $ operon batch-run <pipeline-name> --input-matrix INPUT_MATRIX [--pipeline-config CONFIG] \
+                                       [--parsl-config CONFIG] [--logs-dir DIR]
+
+Operon treats a ``batch-run`` like a single large workflow which happens to contains many disjoint sub-workflows. Every
+node in the workflow graph is given equal access to a pool of resources so those resources are used most efficiently.
+
+Input Matrix
+************
+Passing inputs into a ``batch-run`` isn't done on the command line but rather is pre-gathered into a tab-separated
+matrix file of a specific format. The following formats are supported:
+
+With Headers
+------------
+The header line should be a tab separated list of command line argument flags in the same format as one would use when
+directly typing on the command line. Optional arguments should use their verbatim flags, and positional arguments
+should use the form ``positional_i``, where ``i`` is the position from left-most to right-most. Subsequent lines
+should have the same number of tab separated items, where each item is the value for its corresponding header.
+
+Singleton arguments (where its presence or lack thereof denotes its value) can be specified in their affirmative form
+in the header line. The values given should be either ``true`` or ``false``, which corresponds to whether they should
+be included or not.
+
+.. code-block:: text
+
+    --arg1  --inputs    --singleton positional_0    positional_1
+    val1    /path/to/input1 true    apples  blue
+    val3    /path/to/inputN true    strawberries    green
+    val2    /path/to/inputABB   false   kale    purple
+
+.. note::
+
+    If the literal string ``"true"`` or ``"false"`` is needed, preface with a ``#`` as in ``#true``.
+
+Without Headers
+---------------
+If the flag ``--literal-input`` is given to ``batch-run``, then the header line does not need to exist and each line
+is taken as a literal command line string which will be interpreted as if typed directly into the command line
+(starting with arguments to the pipeline).
+
+.. code-block:: text
+
+    --arg1 val1 --inputs /path/to/input1 --singleton apples blue
+    --arg1 val3 --inputs /path/to/inputN --singleton strawberries green
+    --arg1 val2 --inputs /path/to/inputABB kale purple
 
 Command Line Help
 ^^^^^^^^^^^^^^^^^
