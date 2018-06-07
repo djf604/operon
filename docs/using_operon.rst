@@ -96,6 +96,8 @@ When an Operon pipeline is run, under the hood it creates a Parsl workflow which
 depending on the accompanying Parl configuration. This means that while the definition for a pipeline run with the
 ``run`` subprogram is consistent, that actual execution model may vary if the Parsl configuration varies.
 
+.. _parsl_configuration:
+
 Parsl Configuration
 *******************
 
@@ -112,6 +114,11 @@ The ``run`` subprogram attempts to pull a Parsl configuration from the user in t
 3. From a platform default JSON file located at ``$OPERON_HOME/.operon/parsl_config.json``
 4. A default parsl configuration provided by the pipeline
 5. A package default parsl configuration of 8 workers using Python threads
+
+The Parsl configuration can contain multiple sites, each with different models of execution and different available
+resources. If a multisite Parsl configuration is provided to Operon, it will try to match up the site names as best as
+possible and execute software on appropriate sites. Any software which can't find a Parsl configuration site match will
+run in a random site. The set of site names the pipeline expects is output as a part of ``operon show``.
 
 For more detailed information, refer to the
 `Parsl documentation <http://parsl.readthedocs.io/en/latest/userguide/configuring.html>`_ on the subject.
