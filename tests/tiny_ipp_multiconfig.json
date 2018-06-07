@@ -1,6 +1,6 @@
 {
     "sites": [{
-        "site": "resources_(1,1G)",
+        "site": "small",
         "auth": {
             "channel": "local",
             "username": "dfitzgerald",
@@ -20,7 +20,7 @@
         }
     },
         {
-            "site": "resources_(2,2G)",
+            "site": "med",
             "auth": {
                 "channel": "local",
                 "username": "dfitzgerald",
@@ -40,26 +40,7 @@
             }
         },
         {
-            "site": "resources_(3,3G)",
-            "auth": {
-                "channel": "local",
-                "username": "dfitzgerald",
-                "scriptDir": "/home/dfitzgerald/.ippscripts"
-            },
-            "execution": {
-                "executor": "ipp",
-                "provider": "local",
-                "block": {
-                    "nodes": 1,
-                    "taskBlocks": 1,
-                    "initBlocks": 1,
-                    "maxBlocks": 4,
-                    "minBlocks": 1,
-                    "walltime": "00:01:00"
-                }
-            }
-        },{
-            "site": "Jerry",
+            "site": "large",
             "auth": {
                 "channel": "local",
                 "username": "dfitzgerald",

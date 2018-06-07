@@ -404,6 +404,27 @@ instead, if desired.
 ``Data`` instances can be used in-place anywhere a filesystem path would be passed; that includes both ``Parameter``
 and ``Redirect`` objects.
 
+Meta ``operon.meta.Meta``
+#########################
+The ``Meta`` class has only one method ``define_site()`` used to give a name to a resource configuration.
+
+.. code-block:: python
+
+    from operon.meta import Meta
+
+    Meta.define_site(name='small_site', resources={
+        'cpu': '2',
+        'mem': '2G'
+    })
+
+    Meta.define_site(name='large_site', resources={
+        'cpu': '8',
+        'mem': '50G'
+    })
+
+The value passed to resources must be a dictionary with the keys ``cpu`` and ``mem`` as in the above example. The value
+of ``mem`` should be an integer (as a string) followed by one of ``M``, ``G``, or ``T``.
+
 Software ``operon.components.Software``
 #######################################
 A ``Software`` instance is an abstraction of an executable program external to the pipeline.
@@ -458,6 +479,56 @@ dependencies are resolved.
 
 In the above example, ``third`` won't start running until both ``first`` is finished running and the output from
 ``second`` called ``second.out`` is available.
+
+Multisite Pipelines
+-------------------
+For many workflows, the resource requirements of its software won't be uniform. One solution is to calculate the
+largest resource need and allocate that to every software, but this leads to a large amount of unused resources. A
+better solution is to define resource pools of varying size and assign software to an appropriate pool. This can be
+done with the ``meta=`` keyword argument in two ways.
+
+The developer can define a resource configuration with a call to ``Meta.define_site()`` and then pass that name to the
+``meta=`` keyword argument:
+
+.. code-block:: python
+
+    from operon.components import Software
+    from operon.meta import Meta
+
+    Meta.define_site(name='small_site', resources={
+        'cpu': '2',
+        'mem': '2G'
+    })
+
+    soft1 = Software('soft1')
+    soft1.register(
+        Parameter('-a', '1'),
+        Parameter('-b', '2'),
+        meta={
+            'site': 'small_site'  # Matches the above Meta definition
+        }
+    )
+
+The developer can also define only the resource requirements of a given software at the time of registration:
+
+.. code-block:: python
+
+    from operon.components import Software
+
+    soft1 = Software('soft1')
+    soft1.register(
+        Parameter('-a', '1'),
+        Parameter('-b', '2'),
+        meta={
+            'resources': {
+                'cpu': '2',
+                'mem': '2G'
+            }
+        }
+    )
+
+The above implicity defines a site called ``resources_(2,2G)``. For notes on how a multisite pipeline changes the
+Parsl configuration, refer to the section on :ref:`Parsl configuration <parsl_configuration>`.
 
 CodeBlock ``operon.components.CodeBlock``
 #########################################

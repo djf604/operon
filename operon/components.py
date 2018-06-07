@@ -429,6 +429,7 @@ class ParslPipeline(object):
         )
 
         for pipeline_args in batch_pipeline_args:
+            self.sites()
             self.pipeline(pipeline_args, pipeline_config)
         workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
@@ -462,6 +463,7 @@ class ParslPipeline(object):
         )
 
         # Run pipeline to register Software and assemble workflow graph
+        self.sites()
         self.pipeline(pipeline_args, pipeline_config)
         workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
@@ -740,13 +742,13 @@ class ParslPipeline(object):
 
         # Check to see if Pipeline is single or multi
         pipeline_sites = set(Meta._sites.keys())  # Start with anything defined in Meta
-        for node_id in workflow_graph.nodes():
-            meta_resources = workflow_graph.node[node_id].get('blueprint', {}).get('meta', {}).get('resources')
-            if meta_resources is not None:
-                pipeline_sites.add('resources_({cpu},{mem})'.format(
-                    cpu=meta_resources['cpu'],
-                    mem=meta_resources['mem']
-                ))
+        # for node_id in workflow_graph.nodes():
+        #     meta_resources = workflow_graph.node[node_id].get('blueprint', {}).get('meta', {}).get('resources')
+        #     if meta_resources is not None:
+        #         pipeline_sites.add('resources_({cpu},{mem})'.format(
+        #             cpu=meta_resources['cpu'],
+        #             mem=meta_resources['mem']
+        #         ))
         is_single_pipeline_meta = len(pipeline_sites) <= 1
 
         logger.debug('Pipeline is {}-{}'.format(
@@ -759,7 +761,7 @@ class ParslPipeline(object):
         app_factories['__all__'] = ParslPipeline._generate_site_app_factories(dfk)
 
         # If we have multiple sites, define them
-        if not all((is_single_parsl_config, is_single_pipeline_meta)):
+        if not any((is_single_parsl_config, is_single_pipeline_meta)):
             for site_name in [c['site'] for c in json.loads(parsl_config)['sites']]:
                 app_factories[site_name] = ParslPipeline._generate_site_app_factories(dfk, site_name=site_name)
 
@@ -810,22 +812,14 @@ class ParslPipeline(object):
 
             # Select site to run this app on
             site_assignment = '__all__'
-            if not all((is_single_parsl_config, is_single_pipeline_meta)):
+            if not any((is_single_parsl_config, is_single_pipeline_meta)):
                 # This is a multi-multi run, we might be able to assign to a site
                 # Giving a name defined in Meta takes precedence
                 meta_site = _app_blueprint.get('meta', {}).get('site')
                 if meta_site is not None and meta_site in app_factories:
                     site_assignment = meta_site
-                else:
-                    # Try an implicit resource site
-                    meta_resources = _app_blueprint.get('meta', {}).get('resources')
-                    if meta_resources is not None:
-                        implicit_resource_site = 'resources_({cpu},{mem})'.format(
-                            cpu=meta_resources['cpu'],
-                            mem=meta_resources['mem']
-                        )
-                        if implicit_resource_site in app_factories:
-                            site_assignment = implicit_resource_site
+                elif Meta._default_site is not None and Meta._default_site in app_factories:
+                    site_assignment = Meta._default_site
             logger.info('{} assigned to site {}'.format(_app_blueprint['id'], site_assignment))
 
             # Create the App future with a specific site App factory
@@ -906,6 +900,24 @@ class ParslPipeline(object):
         # TODO Find a way to output this to the user, maybe in the logs directory
 
         return digraph
+
+    def sites(self):
+        """
+        Override this method.
+
+        A dictionary which describes the sites this pipeline is intended to run on.
+        """
+        # return {
+        #     'site1': {
+        #         'resources': {
+        #             'cpu': Meta.dynamic(),
+        #             'mem': '4G',
+        #             'storage': '400G'
+        #         },
+        #         'description': ''
+        #     }
+        # }
+        return dict()
 
     def parsl_configuration(self):
         """

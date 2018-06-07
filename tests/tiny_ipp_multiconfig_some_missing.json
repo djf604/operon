@@ -1,6 +1,6 @@
 {
     "sites": [{
-        "site": "resources_(1,1G)",
+        "site": "small",
         "auth": {
             "channel": "local",
             "username": "dfitzgerald",
@@ -20,7 +20,7 @@
         }
     },
         {
-            "site": "resources_(3,3G)",
+            "site": "large",
             "auth": {
                 "channel": "local",
                 "username": "dfitzgerald",

@@ -132,9 +132,17 @@ def multipipeline_components_for_tests():
                 with open(out, 'w') as outfile:
                     outfile.write('{}\n'.format(id_))
 
-    Meta.define_site(name='Jerry', resources={
+    Meta.define_site(name='small', resources={
+        'cpu': '1',
+        'mem': '1G'
+    })
+    Meta.define_site(name='med', resources={
         'cpu': '2',
         'mem': '2G'
+    })
+    Meta.define_site(name='large', resources={
+        'cpu': '3',
+        'mem': '3G'
     })
 
     # App a, start=0, end=2
@@ -142,12 +150,7 @@ def multipipeline_components_for_tests():
     petrichor.register(
         Parameter('--sleep', '2'),
         Redirect(stream='>', dest=Data('a.out')),
-        meta={
-            'resources': {
-                'cpu': '1',
-                'mem': '1G'
-            }
-        }
+        meta={'site': 'small'}
     )
 
     # App b, start=0, end=3
@@ -155,12 +158,7 @@ def multipipeline_components_for_tests():
     petrichor.register(
         Parameter('--sleep', '3'),
         Redirect(stream='>', dest=Data('b.out')),
-        meta={
-            'resources': {
-                'cpu': '2',
-                'mem': '2G'
-            }
-        }
+        meta={'site': 'med'}
     )
 
     # App c, start=0, end=5
@@ -168,12 +166,7 @@ def multipipeline_components_for_tests():
     petrichor.register(
         Parameter('--sleep', '5'),
         Redirect(stream='>', dest=Data('c.out')),
-        meta={
-            'resources': {
-                'cpu': '3',
-                'mem': '3G'
-            }
-        }
+        meta={'site': 'large'}
     )
 
     # App d, start=5, end=8
@@ -186,19 +179,14 @@ def multipipeline_components_for_tests():
         },
         inputs=[Data('a.out'), Data('b.out'), Data('c.out')],
         outputs=[Data('d1.out'), Data('d2.out')],
-        meta={
-            'resources': {
-                'cpu': '1',
-                'mem': '1G'
-            }
-        }
+        meta={'site': 'small'}
     )
 
     # App e, start=0, end=10
     # sleep_5
     app_e = bash_sleep.register(
         Parameter('10'),
-        meta={'site': 'Jerry'}
+        meta={'site': 'med'}
     )
 
     # App g, start=10, end=12
@@ -212,12 +200,7 @@ def multipipeline_components_for_tests():
         inputs=[Data('d2.out')],
         outputs=[Data('g1.out'), Data('g2.out')],
         wait_on=[app_e],
-        meta={
-            'resources': {
-                'cpu': '1',
-                'mem': '1G'
-            }
-        }
+        meta={'site': 'small'}
     )
 
     # App f, start=8, end=11
@@ -226,13 +209,7 @@ def multipipeline_components_for_tests():
         Parameter('--sleep', '3'),
         Parameter('--outfile', Data('f.out').as_output(tmp=True)),
         extra_inputs=[Data('d1.out')],
-        meta={
-            'resources': {
-                'cpu': '2',
-                'mem': '2G'
-            },
-            'site': 'Jerry'
-        }
+        meta={'site': 'med'}
     )
 
     # App h, start=12, end=18
@@ -240,13 +217,7 @@ def multipipeline_components_for_tests():
     app_h = bash_sleep.register(
         Parameter('6'),
         extra_inputs=[Data('g2.out')],
-        meta={
-            'resources': {
-                'cpu': '3',
-                'mem': '3G'
-            },
-            'site': 'DoesNotExist'
-        }
+        meta={'site': 'large'}
     )
 
     # App i, start=18, end=20
@@ -256,12 +227,7 @@ def multipipeline_components_for_tests():
         Parameter('--outfile', Data('i.final').as_output()),
         extra_inputs=[Data('g1.out'), Data('f.out')],
         wait_on=[app_h],
-        meta={
-            'resources': {
-                'cpu': '1',
-                'mem': '1G'
-            }
-        }
+        meta={'site': 'small'}
     )
 
 
@@ -432,59 +398,59 @@ def test_various_pipelines(tmpdir_factory):
         'petrichor_9': '__all__',
     }
     # Test single-single on threads
-    do_pipeline_execution(tmpdir_factory, 'basic-threads-4', pipeline_components_for_tests,
-                          site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'basic-threads-4', pipeline_components_for_tests,
+    #                       site_assignments=no_site_assignments)
     # Test single-single on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', pipeline_components_for_tests,
-                          site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', pipeline_components_for_tests,
+    #                       site_assignments=no_site_assignments)
 
     # Test single-multi on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', pipeline_components_for_tests,
-                          site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', pipeline_components_for_tests,
+    #                       site_assignments=no_site_assignments)
 
     # Test multi-single on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', multipipeline_components_for_tests,
-                          site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', multipipeline_components_for_tests,
+    #                       site_assignments=no_site_assignments)
 
     # Test multi-multi-perfect on ipp
     do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', multipipeline_components_for_tests,
                           site_assignments={
-                              'petrichor_1': 'resources_(1,1G)',
-                              'petrichor_2': 'resources_(2,2G)',
-                              'petrichor_3': 'resources_(3,3G)',
-                              'notos_4': 'resources_(1,1G)',
-                              'sleep_5': 'Jerry',
-                              'notos_6': 'resources_(1,1G)',
-                              'petrichor_7': 'Jerry',
-                              'sleep_8': 'resources_(3,3G)',
-                              'petrichor_9': 'resources_(1,1G)',
+                              'petrichor_1': 'small',
+                              'petrichor_2': 'med',
+                              'petrichor_3': 'large',
+                              'notos_4': 'small',
+                              'sleep_5': 'med',
+                              'notos_6': 'small',
+                              'petrichor_7': 'med',
+                              'sleep_8': 'large',
+                              'petrichor_9': 'small',
                           })
 
     # Test multi-multi-some on ipp, missing sites in config
     do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_missing.json', multipipeline_components_for_tests,
                           site_assignments={
-                              'petrichor_1': 'resources_(1,1G)',
+                              'petrichor_1': 'small',
                               'petrichor_2': '__all__',
-                              'petrichor_3': 'resources_(3,3G)',
-                              'notos_4': 'resources_(1,1G)',
+                              'petrichor_3': 'large',
+                              'notos_4': 'small',
                               'sleep_5': '__all__',
-                              'notos_6': 'resources_(1,1G)',
+                              'notos_6': 'small',
                               'petrichor_7': '__all__',
-                              'sleep_8': 'resources_(3,3G)',
-                              'petrichor_9': 'resources_(1,1G)',
+                              'sleep_8': 'large',
+                              'petrichor_9': 'small',
                           })
     # Test multi-multi-some on ipp, extra sites in config
     do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_extra.json', multipipeline_components_for_tests,
                           site_assignments={
-                              'petrichor_1': 'resources_(1,1G)',
-                              'petrichor_2': 'resources_(2,2G)',
-                              'petrichor_3': 'resources_(3,3G)',
-                              'notos_4': 'resources_(1,1G)',
-                              'sleep_5': 'Jerry',
-                              'notos_6': 'resources_(1,1G)',
-                              'petrichor_7': 'Jerry',
-                              'sleep_8': 'resources_(3,3G)',
-                              'petrichor_9': 'resources_(1,1G)',
+                              'petrichor_1': 'small',
+                              'petrichor_2': 'med',
+                              'petrichor_3': 'large',
+                              'notos_4': 'small',
+                              'sleep_5': 'med',
+                              'notos_6': 'small',
+                              'petrichor_7': 'med',
+                              'sleep_8': 'large',
+                              'petrichor_9': 'small',
                           })
 
     # Test multi-multi-mismatch on ipp
