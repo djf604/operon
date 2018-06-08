@@ -11,6 +11,7 @@ import operon
 from operon._cli import _completer
 from operon._cli.subcommands import BaseSubcommand
 from operon._util.configs import init_config_stub
+from operon._util.home import OperonState
 
 ARGV_OPERON_HOME_ROOT = 0
 
@@ -93,17 +94,12 @@ def make_operon_home(operon_home_root):
 
         # Write out an empty Operon State JSON
         sys.stderr.write('Writing out empty state file\n')
-        operon_state_json_path = os.path.join(operon_home_root, '.operon', 'operon_state.json')
-        empty_state = {
-            'pipelines': dict(),
-            'operon': {
-                'version': operon.__version__,
-                'init_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
-                'home_root': operon_home_root
-            }
-        }
-        with open(operon_state_json_path, 'w') as operon_state_json:
-            operon_state_json.write(json.dumps(empty_state, indent=2) + '\n')
+        OperonState().db.insert({
+            'type': 'operon_record',
+            'version': operon.__version__,
+            'init_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
+            'home_root': operon_home_root
+        })
 
         # Write out a default parsl config stub
         sys.stderr.write('Writing out default Parsl config stub\n')

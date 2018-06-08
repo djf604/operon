@@ -3,39 +3,40 @@ import sys
 import json
 from importlib.util import spec_from_file_location, module_from_spec
 
+import tinydb
+
 
 class OperonState(object):
-    def __init__(self):
-        # Get current state
-        operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
-        self.state_json_path = os.path.join(operon_home_root, '.operon', 'operon_state.json')
-        try:
-            with open(self.state_json_path) as operon_state:
-                self.state = json.load(operon_state)
-        except FileNotFoundError:
-            sys.stderr.write('Operon state metadata json could not be found at {}\n'.format(self.state_json_path))
-            sys.exit(1)
-        except json.JSONDecodeError:
-            sys.stderr.write('Operon state metadata json is malformed\n')
-            sys.exit(1)
+    """
+    Schema:
+    {
+        'type': 'operon_record'
+        'version': version of operon
+        'init_date': date of operon directory initialization
+        'home_root': root location of the operon directory
+    }
+    {
+        'type': 'pipeline_record'
+        'name': name of the pipeline
+        'installed_date': date of pipeline installation
+        'configured': True/False whether the pipeline has a corresponding configuration
+    }
+    """
+    _init = False
+    _operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
+    db = None
+    query = tinydb.Query()
 
-    def __enter__(self):
-        return self
+    def __new__(cls, *args, **kwargs):
+        if not cls._init:
+            cls.db = tinydb.TinyDB(os.path.join(cls._operon_home_root, '.operon', '.operon_state_db.json'))
+        return super().__new__(cls, *args, **kwargs)
 
-    def __exit__(self, *args):
-        with open(self.state_json_path, 'w') as operon_state:
-            json.dump(self.state, operon_state, indent=2)
-
-    def insert_pipeline(self, name, values):
-        self.state['pipelines'][name] = values
-
-    def remove_pipeline(self, name):
-        self.state['pipelines'].pop(name, None)
-
-    def list_pipelines(self):
+    @classmethod
+    def list_pipelines(cls):
         return [
-            (pipeline_name, state['configured'])
-            for pipeline_name, state in self.state['pipelines'].items()
+            (record['name'], record['configured'])
+            for record in cls.db.search(cls.query.type == 'pipeline_record')
         ]
 
 
@@ -49,7 +50,7 @@ def pipeline_is_installed(pipeline_name, force_state_installation=False):
         os.path.join(get_operon_home(), 'pipelines', '{}.py'.format(pipeline_name))
     )
     if force_state_installation:
-        return pipeline_file_exists and pipeline_name in OperonState().state['pipelines']
+        return pipeline_file_exists and OperonState().db.search(OperonState().query.name == pipeline_name)
     return pipeline_file_exists
 
 

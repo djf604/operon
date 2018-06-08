@@ -283,8 +283,7 @@ class Subcommand(BaseSubcommand):
                     config_output.write(json.dumps(populated_config_dict, indent=2) + '\n')
 
                 # Set pipeline to configured in Operon state
-                with OperonState() as opstate:
-                    opstate.state['pipelines'][pipeline_name]['configured'] = True
+                OperonState().db.update({'configured': True}, OperonState().query.name == pipeline_name)
 
                 sys.stderr.write('Configuration file successfully written.\n')
             except IOError:

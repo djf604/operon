@@ -52,5 +52,4 @@ class Subcommand(BaseSubcommand):
             subprocess.call(['rm', pipeline_config])
 
         # Remove from Operon state
-        with OperonState() as op_state:
-            op_state.remove_pipeline(pipeline_name)
+        OperonState().db.remove(OperonState().query.name == pipeline_name)

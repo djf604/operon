@@ -8,7 +8,8 @@ operon_python_dependencies = [
     'ipyparallel',
     'networkx==2.0',
     'blessings>=1.6',
-    'readchar==0.1.0'
+    'readchar==0.1.0',
+    'tinydb==3.9.0.post1'
 ]
 
 setup(

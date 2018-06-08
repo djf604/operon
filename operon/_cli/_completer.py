@@ -2,9 +2,9 @@
 import os
 import sys
 import subprocess
-import json
 try:
     from operon._cli import get_operon_subcommands
+    from operon._util.home import OperonState
 except ImportError:
     sys.exit()
 
@@ -12,14 +12,7 @@ COMPGEN = 'compgen -W "{options}" -- "{stub}"'
 
 
 def get_pipeline_options():
-    operon_home_root = os.environ.get('OPERON_HOME') or os.path.expanduser('~')
-    operon_state_json_path = os.path.join(operon_home_root, '.operon', 'operon_state.json')
-    try:
-        with open(operon_state_json_path) as operon_state_json:
-            operon_state = json.load(operon_state_json)
-            return ' '.join(operon_state['pipelines'].keys())
-    except OSError:
-        return ''
+    return ' '.join([_p['name'] for _p in OperonState().db.search(OperonState().query.type == 'pipeline_record')])
 
 
 def get_completion_options(options, stub):
@@ -42,7 +35,7 @@ def completer():
     completion_options = ''
     if num_completed_tokens == 1:
         completion_options = get_completion_options(
-            options=' '.join(get_operon_subcommands().replace('_', '-')),
+            options=' '.join([_sub.replace('_', '-') for _sub in get_operon_subcommands()]),
             stub=stub_token
         )
     elif num_completed_tokens == 2:

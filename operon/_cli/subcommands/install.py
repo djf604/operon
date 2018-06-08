@@ -60,15 +60,14 @@ class Subcommand(BaseSubcommand):
         try:
             shutil.copy2(pipeline_path, self.home_pipelines)
 
-            # Add pipeline to Operon state
-            with OperonState() as operon_state:
-                operon_state.insert_pipeline(
-                    name=pipeline_name,
-                    values={
-                        'installed_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
-                        'configured': False
-                    }
-                )
+            # Store pipeline record in DB
+            OperonState().db.insert({
+                'type': 'pipeline_record',
+                'name': pipeline_name,
+                'installed_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
+                'configured': False
+            })
+
             sys.stderr.write('Pipeline {} successfully installed.\n'.format(os.path.basename(pipeline_path)))
         except (IOError, OSError, shutil.Error):
             sys.stderr.write('Pipeline at {} could not be installed into {}.\n'.format(pipeline_path,
