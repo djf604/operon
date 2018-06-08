@@ -17,10 +17,10 @@ from ipyparallel.error import RemoteError
 import networkx as nx
 
 from operon._util.logging import setup_logger
-from operon._util.home import get_operon_home
+from operon._util.home import get_operon_home, OperonState
 from operon._util.configs import dfk_with_config, direct_config, cycle_config_input_options
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
-from operon._util.errors import MalformedPipelineError
+from operon._util.errors import MalformedPipelineError, NoParslConfigurationError
 from operon.meta import Meta
 
 SOURCE = 0
@@ -580,12 +580,12 @@ class ParslPipeline(object):
         running_listener_thread.join()
 
         # All apps are complete, so run cleanup
-        if tmp_files:
+        if tmp_files and OperonState().setting('delete_temporary_files') == 'yes':
             for tmp_file_path in tmp_files:
                 try:
                     os.remove(tmp_file_path)
                 except Exception:
-                    pass  # If a file can't be delete, just leave it a move on
+                    pass  # If a file can't be deleted, just leave it and move on
 
         # Record end time and elapsed time
         end_time = datetime.now()
@@ -673,9 +673,11 @@ class ParslPipeline(object):
             # except ValueError:
             #     pass  # Silently fail, move on to next option
 
-        # 5) Config used if all above are absent, always run as a Thread Pool with 2 workers
-        logger.info('Loaded Parsl config using package default (2 basic threads)')
-        return 'builtin', 'basic-threads-2'
+        # 5) Config used if all above are absent, run as a Thread Pool with 2 workers
+        if OperonState().setting('no_parsl_config_behavior') == 'use_package_default':
+            logger.info('Loaded Parsl config using package default (2 basic threads)')
+            return 'builtin', 'basic-threads-2'
+        raise NoParslConfigurationError('Operon global settings requested immediate failure')
 
 
     @staticmethod
@@ -742,13 +744,6 @@ class ParslPipeline(object):
 
         # Check to see if Pipeline is single or multi
         pipeline_sites = set(Meta._sites.keys())  # Start with anything defined in Meta
-        # for node_id in workflow_graph.nodes():
-        #     meta_resources = workflow_graph.node[node_id].get('blueprint', {}).get('meta', {}).get('resources')
-        #     if meta_resources is not None:
-        #         pipeline_sites.add('resources_({cpu},{mem})'.format(
-        #             cpu=meta_resources['cpu'],
-        #             mem=meta_resources['mem']
-        #         ))
         is_single_pipeline_meta = len(pipeline_sites) <= 1
 
         logger.debug('Pipeline is {}-{}'.format(

@@ -16,6 +16,19 @@ from operon._util.home import OperonState
 ARGV_OPERON_HOME_ROOT = 0
 
 
+def init_operon_record(operon_home_root):
+    return {
+        'type': 'operon_record',
+        'version': operon.__version__,
+        'init_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
+        'home_root': operon_home_root,
+        'settings': {
+            'no_parsl_config_behavior': 'use_package_default',
+            'delete_temporary_files': 'yes'
+        }
+    }
+
+
 def create_or_append_to_file(comment, payload, filepath):
     payload_exists, write_mode = False, 'w'
     if os.path.isfile(filepath):
@@ -94,12 +107,7 @@ def make_operon_home(operon_home_root):
 
         # Write out an empty Operon State JSON
         sys.stderr.write('Writing out empty state file\n')
-        OperonState().db.insert({
-            'type': 'operon_record',
-            'version': operon.__version__,
-            'init_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
-            'home_root': operon_home_root
-        })
+        OperonState().db.insert(init_operon_record(operon_home_root))
 
         # Write out a default parsl config stub
         sys.stderr.write('Writing out default Parsl config stub\n')

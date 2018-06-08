@@ -1,6 +1,4 @@
 import os
-import sys
-import json
 from importlib.util import spec_from_file_location, module_from_spec
 
 import tinydb
@@ -38,6 +36,17 @@ class OperonState(object):
             (record['name'], record['configured'])
             for record in cls.db.search(cls.query.type == 'pipeline_record')
         ]
+
+    @classmethod
+    def setting(cls, *args):
+        if not args:
+            return None
+        _settings_doc = cls.db.get(doc_id=1)['settings']
+        if args[0] in _settings_doc:
+            if len(args) == 1:
+                return _settings_doc.get(args[0])
+            _settings_doc[args[0]] = args[1]
+            cls.db.update({'settings': _settings_doc}, cls.query.type == 'operon_record')
 
 
 def get_operon_home(root=False):

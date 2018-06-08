@@ -27,37 +27,6 @@ def parse_pipeline_config(pipeline_config_path):
         sys.exit(1)
 
 
-# def cycle_config_input_options(user_input):
-#     # Look for the name of an Operon pre-defined parsl config
-#     if user_input in dfk_with_config:
-#         return dfk_with_config[user_input]()
-#
-#     # If this is a valid filepath, try to read the JSON as a config
-#     if os.path.isfile(user_input):
-#         with open(user_input) as config_json:
-#             try:
-#                 return direct_config(json.load(config_json))
-#             except json.JSONDecodeError:
-#                 logger.error('Malformed JSON when loading from command line arguments '
-#                              'or pipeline config, trying next option')
-#             except ValueError:
-#                 logger.error('Bad Parsl configuration when loading from command line '
-#                              'arguments or pipeline config, trying next option')
-#
-#     # Try to load the input directly as JSON
-#     try:
-#         return direct_config(json.loads(user_input))
-#     except json.JSONDecodeError:
-#         logger.error('Malformed JSON when loading from command line arguments '
-#                      'or pipeline config, trying next option')
-#     except ValueError:
-#         logger.error('Bad Parsl configuration when loading from command line '
-#                      'arguments or pipeline config, trying next option')
-#
-#     # If all the above options failed, return None so other options will be tried
-#     return None
-
-
 def cycle_config_input_options(user_input):
     # Look for the name of an Operon pre-defined parsl config
     if user_input in dfk_with_config:
