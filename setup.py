@@ -4,7 +4,7 @@ import operon
 
 operon_python_dependencies = [
     'libsubmit',
-    'parsl==0.4.0',
+    'parsl==0.5.2',
     'ipyparallel',
     'networkx==2.0',
     'blessings>=1.6',

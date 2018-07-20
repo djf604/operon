@@ -5,10 +5,13 @@ import subprocess
 try:
     from operon._cli import get_operon_subcommands
     from operon._util.home import OperonState
+    from operon import COMPLETER_VERSION
 except ImportError:
     sys.exit()
 
 COMPGEN = 'compgen -W "{options}" -- "{stub}"'
+VERSION = 1
+SEMANTIC_VERSION = '1.8.0'
 
 
 def get_pipeline_options():
@@ -50,4 +53,16 @@ def completer():
 
 
 if __name__ == '__main__':
+    # Run version check, self-update if necessary
+    if COMPLETER_VERSION > VERSION:
+        try:
+            import inspect
+            from operon._cli import _completer
+            completer_path = os.path.abspath(__file__)
+            with open(completer_path, 'w') as operon_completer:
+                operon_completer.write(inspect.getsource(_completer))
+            os.chmod(completer_path, 0o755)
+        except:
+            pass
+
     completer()
