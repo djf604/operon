@@ -32,7 +32,7 @@ class BaseSubcommand(object):
         classes_in_pipeline_mod = [
             c for c in
             inspect.getmembers(pipeline_mod, inspect.isclass)
-            if '__operon.pipeline' in str(i[MODULE_INSTANCE])
+            if '__operon.pipeline' in str(c[MODULE_INSTANCE])
         ]
         # If there is only one class in the pipeline file, use that class
         if len(classes_in_pipeline_mod) == 1:
