@@ -171,6 +171,9 @@ class Software(_ParslAppBlueprint):
 
         # Deal with Redirects
         for redirect in cmd_parts['Redirect']:
+            if redirect.stream in Redirect._BOTH_MODES:
+                app_blueprint['stdout'] = app_blueprint['stderr'] = str(redirect.dest)
+                break
             if redirect.stream in Redirect._STDOUT_MODES:
                 app_blueprint['stdout'] = str(redirect.dest)
             elif redirect.stream in Redirect._STDERR_MODES:
@@ -312,24 +315,29 @@ class Redirect(object):
     STDOUT = 0
     STDERR = 1
     BOTH = 2
-    STDOUT_APPEND = 3
-    STDERR_APPEND = 4
-    BOTH_APPEND = 5
+    # STDOUT_APPEND = 3
+    # STDERR_APPEND = 4
+    # BOTH_APPEND = 5
     NULL = os.devnull
-    _APPEND_MODES = {STDOUT_APPEND, STDERR_APPEND, BOTH_APPEND}
-    _STDOUT_MODES = {STDOUT, STDOUT_APPEND}
-    _STDERR_MODES = {STDERR, STDERR_APPEND}
-    _BOTH_MODES = {BOTH, BOTH_APPEND}
+    # Remove the ability to use append mode until Parsl supports it
+    _STDOUT_MODES = {STDOUT}
+    _STDERR_MODES = {STDERR}
+    _BOTH_MODES = {BOTH}
+    _APPEND_MODES = set()
+    # _APPEND_MODES = {STDOUT_APPEND, STDERR_APPEND, BOTH_APPEND}
+    # _STDOUT_MODES = {STDOUT, STDOUT_APPEND}
+    # _STDERR_MODES = {STDERR, STDERR_APPEND}
+    # _BOTH_MODES = {BOTH, BOTH_APPEND}
 
     _convert = {
         '>': STDOUT,
         '1>': STDOUT,
-        '>>': STDOUT_APPEND,
-        '1>>': STDOUT_APPEND,
+        # '>>': STDOUT_APPEND,
+        # '1>>': STDOUT_APPEND,
         '2>': STDERR,
-        '2>>': STDERR_APPEND,
+        # '2>>': STDERR_APPEND,
         '&>': BOTH,
-        '&>>': BOTH_APPEND
+        # '&>>': BOTH_APPEND
     }
 
     def __init__(self, stream=STDOUT, dest='out.txt'):
