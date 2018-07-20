@@ -11,7 +11,7 @@ except ImportError:
 
 COMPGEN = 'compgen -W "{options}" -- "{stub}"'
 VERSION = 1
-SEMANTIC_VERSION = '1.8.0'
+SEMANTIC_VERSION = '0.1.8'
 
 
 def get_pipeline_options():
