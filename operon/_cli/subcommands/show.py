@@ -35,6 +35,14 @@ class Subcommand(BaseSubcommand):
                              'so some information may be missing.\n\n')
 
         pipeline_instance = self.get_pipeline_instance(pipeline_name)
+        if pipeline_instance is None:
+            # If pipeline class doesn't exist, exit immediately
+            sys.stderr.write('Pipeline {name} does not exist in {home}\n'.format(
+                name=pipeline_name,
+                home=self.home_pipelines + '/'
+            ))
+            sys.exit(EXIT_CMD_SYNTAX_ERROR)
+
         config_dictionary = pipeline_instance.configuration()
 
         # Start show subcommand output
