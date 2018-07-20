@@ -3,6 +3,8 @@ from importlib.util import spec_from_file_location, module_from_spec
 
 import tinydb
 
+FILENAME_BASE = 0
+
 
 class OperonState(object):
     """
@@ -31,7 +33,14 @@ class OperonState(object):
         return super().__new__(cls, *args, **kwargs)
 
     @classmethod
-    def list_pipelines(cls):
+    def pipelines_installed(cls):
+        return {
+            record['name']
+            for record in cls.db.search(cls.query.type == 'pipeline_record')
+        }
+
+    @classmethod
+    def pipelines_configured(cls):
         return [
             (record['name'], record['configured'])
             for record in cls.db.search(cls.query.type == 'pipeline_record')
@@ -74,3 +83,10 @@ def load_pipeline_file(pipeline_filepath):
     mod = module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def file_appears_installed(filepath):
+    if not os.path.isfile(filepath):
+        return False
+    pipeline_name_base = os.path.splitext(os.path.basename(filepath))[FILENAME_BASE]
+    return pipeline_name_base in OperonState().pipelines_installed()

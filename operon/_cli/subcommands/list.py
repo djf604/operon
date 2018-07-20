@@ -29,7 +29,7 @@ class Subcommand(BaseSubcommand):
             lambda c: 'Yes' if c else term.red('No')
         ]
 
-        pipelines_state = OperonState().list_pipelines()
+        pipelines_state = OperonState().pipelines_configured()
         rows = [''] * (len(pipelines_state) + 1)
 
         for col_i, col_contents in enumerate(zip(*pipelines_state)):
