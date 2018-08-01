@@ -183,6 +183,11 @@ class Software(_ParslAppBlueprint):
 
         # Deal with a Pipe, if it exists
         if cmd_parts['Pipe']:
+            # Preserve the previous redirect to stderr, if it exists
+            if app_blueprint['stderr'] is not None:
+                cmd.append('2> {}'.format(app_blueprint['stderr']))
+
+            # Append the piped software
             pipe_blueprint = cmd_parts['Pipe'].piped_software_blueprint
             cmd.extend(['|', pipe_blueprint['cmd']])
             app_blueprint['inputs'].extend(pipe_blueprint['inputs'])
