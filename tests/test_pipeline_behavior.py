@@ -322,18 +322,32 @@ def test_correct_dfk_cascade():
 
     with pytest.raises(ScalingFailed):
         # Argument level, built-in DFK
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
+        assert ParslPipeline._choose_parsl_config(
             pipeline_args_parsl_config='basic-threads-4',
-            pipeline_config_parsl_config='tiny_config.json',
+            pipeline_config_parsl_config='tiny_config.py',
             pipeline_default_parsl_config=None
-        )).executors[0], ThreadPoolExecutor)
+        ).executors[0].label == 'threads'
+
+        # assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
+        #     pipeline_args_parsl_config='basic-threads-4',
+        #     pipeline_config_parsl_config='tiny_config.json',
+        #     pipeline_default_parsl_config=None
+        # )).executors[0], ThreadPoolExecutor)
 
         # Argument level, point to JSON file
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config='tiny_config.json',
-            pipeline_config_parsl_config='tiny_config.json',
+        assert ParslPipeline._choose_parsl_config(
+            pipeline_args_parsl_config='tiny_config.py',
+            pipeline_config_parsl_config='tiny_config.py',
             pipeline_default_parsl_config=None
-        )), DataFlowKernel)
+        ).executors[0].label == 'tiny_config'
+
+
+
+        # assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
+        #     pipeline_args_parsl_config='tiny_config.json',
+        #     pipeline_config_parsl_config='tiny_config.json',
+        #     pipeline_default_parsl_config=None
+        # )), DataFlowKernel)
 
         # Argument level, point to JSON file, malformed
         assert ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
@@ -341,13 +355,6 @@ def test_correct_dfk_cascade():
             pipeline_config_parsl_config='tiny_config.json',
             pipeline_default_parsl_config=None
         )) is None
-
-        # Argument level, direct pass
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=direct_pass,
-            pipeline_config_parsl_config='tiny_config.json',
-            pipeline_default_parsl_config=None
-        )), DataFlowKernel)
 
         # Config level, built-in DFK
         assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
@@ -370,19 +377,18 @@ def test_correct_dfk_cascade():
             pipeline_default_parsl_config=None
         )) is None
 
-        # Config level, direct pass
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=None,
-            pipeline_config_parsl_config=direct_pass,
-            pipeline_default_parsl_config=None
-        )), DataFlowKernel)
-
         # Package default, built-in DFK
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
+        # assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
+        #     pipeline_args_parsl_config=None,
+        #     pipeline_config_parsl_config=None,
+        #     pipeline_default_parsl_config=None
+        # )).executors[0], ThreadPoolExecutor)
+
+        assert ParslPipeline._choose_parsl_config(
             pipeline_args_parsl_config=None,
             pipeline_config_parsl_config=None,
             pipeline_default_parsl_config=None
-        )).executors[0], ThreadPoolExecutor)
+        ).executors[0].label == 'threads'
 
 
 def test_various_pipelines(tmpdir_factory):
@@ -401,8 +407,8 @@ def test_various_pipelines(tmpdir_factory):
     # do_pipeline_execution(tmpdir_factory, 'basic-threads-4', pipeline_components_for_tests,
     #                       site_assignments=no_site_assignments)
     # Test single-single on ipp
-    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', pipeline_components_for_tests,
-    #                       site_assignments=no_site_assignments)
+    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.py', pipeline_components_for_tests,
+                          site_assignments=no_site_assignments)
 
     # Test single-multi on ipp
     # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', pipeline_components_for_tests,
@@ -413,49 +419,49 @@ def test_various_pipelines(tmpdir_factory):
     #                       site_assignments=no_site_assignments)
 
     # Test multi-multi-perfect on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', multipipeline_components_for_tests,
-                          site_assignments={
-                              'petrichor_1': 'small',
-                              'petrichor_2': 'med',
-                              'petrichor_3': 'large',
-                              'notos_4': 'small',
-                              'sleep_5': 'med',
-                              'notos_6': 'small',
-                              'petrichor_7': 'med',
-                              'sleep_8': 'large',
-                              'petrichor_9': 'small',
-                          })
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.py', multipipeline_components_for_tests,
+    #                       site_assignments={
+    #                           'petrichor_1': 'small',
+    #                           'petrichor_2': 'med',
+    #                           'petrichor_3': 'large',
+    #                           'notos_4': 'small',
+    #                           'sleep_5': 'med',
+    #                           'notos_6': 'small',
+    #                           'petrichor_7': 'med',
+    #                           'sleep_8': 'large',
+    #                           'petrichor_9': 'small',
+    #                       })
 
     # Test multi-multi-some on ipp, missing sites in config
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_missing.json', multipipeline_components_for_tests,
-                          site_assignments={
-                              'petrichor_1': 'small',
-                              'petrichor_2': '__all__',
-                              'petrichor_3': 'large',
-                              'notos_4': 'small',
-                              'sleep_5': '__all__',
-                              'notos_6': 'small',
-                              'petrichor_7': '__all__',
-                              'sleep_8': 'large',
-                              'petrichor_9': 'small',
-                          })
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_missing.json', multipipeline_components_for_tests,
+    #                       site_assignments={
+    #                           'petrichor_1': 'small',
+    #                           'petrichor_2': '__all__',
+    #                           'petrichor_3': 'large',
+    #                           'notos_4': 'small',
+    #                           'sleep_5': '__all__',
+    #                           'notos_6': 'small',
+    #                           'petrichor_7': '__all__',
+    #                           'sleep_8': 'large',
+    #                           'petrichor_9': 'small',
+    #                       })
     # Test multi-multi-some on ipp, extra sites in config
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_extra.json', multipipeline_components_for_tests,
-                          site_assignments={
-                              'petrichor_1': 'small',
-                              'petrichor_2': 'med',
-                              'petrichor_3': 'large',
-                              'notos_4': 'small',
-                              'sleep_5': 'med',
-                              'notos_6': 'small',
-                              'petrichor_7': 'med',
-                              'sleep_8': 'large',
-                              'petrichor_9': 'small',
-                          })
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_extra.json', multipipeline_components_for_tests,
+    #                       site_assignments={
+    #                           'petrichor_1': 'small',
+    #                           'petrichor_2': 'med',
+    #                           'petrichor_3': 'large',
+    #                           'notos_4': 'small',
+    #                           'sleep_5': 'med',
+    #                           'notos_6': 'small',
+    #                           'petrichor_7': 'med',
+    #                           'sleep_8': 'large',
+    #                           'petrichor_9': 'small',
+    #                       })
 
     # Test multi-multi-mismatch on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_all_missing.json', multipipeline_components_for_tests,
-                          site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_all_missing.json', multipipeline_components_for_tests,
+    #                       site_assignments=no_site_assignments)
 
 
 def do_pipeline_execution(tmpdir_factory, parsl_config, pipeline_components_func, site_assignments):
@@ -467,18 +473,13 @@ def do_pipeline_execution(tmpdir_factory, parsl_config, pipeline_components_func
     workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
     # Register apps and data with Parsl, get all app futures and temporary files
-    config_type, parsl_config = ParslPipeline._choose_parsl_config(
-        pipeline_args_parsl_config=parsl_config,
-        pipeline_config_parsl_config=None,
-        pipeline_default_parsl_config=None
-    )
     pipeline_futs, tmp_files = ParslPipeline._register_workflow(
         workflow_graph=workflow_graph,
-        dfk=ParslPipeline._get_dfk(
-            config_type=config_type,
-            parsl_config=parsl_config
-        ),
-        parsl_config=config_type if config_type == 'builtin' else parsl_config
+        parsl_config=ParslPipeline._choose_parsl_config(
+            pipeline_args_parsl_config=parsl_config,
+            pipeline_config_parsl_config=None,
+            pipeline_default_parsl_config=None
+        )
     )
 
     # Monitor the run to completion

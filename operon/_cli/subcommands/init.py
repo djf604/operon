@@ -107,7 +107,7 @@ def make_operon_home(operon_home_root):
 
         # Write out an empty Operon State JSON
         sys.stderr.write('Writing out empty state file\n')
-        OperonState().db.insert(init_operon_record(operon_home_root))
+        OperonState(operon_home_root=operon_home_root).db.insert(init_operon_record(operon_home_root))
 
         # Write out a default parsl config stub
         sys.stderr.write('Writing out default Parsl config stub\n')

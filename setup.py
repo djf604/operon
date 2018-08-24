@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 import operon
 
 operon_python_dependencies = [
-    'parsl==0.5.2',
+    'parsl>=0.6.0',
     'ipyparallel',
     'networkx==2.0',
     'blessings>=1.6',
