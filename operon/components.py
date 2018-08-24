@@ -11,6 +11,8 @@ import traceback
 from copy import copy
 from collections import namedtuple
 from datetime import datetime
+from getpass import getuser
+from socket import gethostname
 
 import parsl
 from parsl.app.app import python_app, bash_app
@@ -456,96 +458,29 @@ class ParslPipeline(object):
     ParslPipeline forms the basis for a Pipeline class. This class sets up workflow digraph construction,
     stream capturing, and registration of apps and dependencies with Parsl.
     """
-    pipeline_args = None
-    pipeline_config = None
-
     # Temporary directory to send stream output of un-Redirected apps
     _pipeline_run_temp_dir = None
 
-    def _run_batch_pipeline(self, run_args, pipeline_config, batch_pipeline_args):
-        # Setup pipeline run
-        ParslPipeline._setup_run(
-            logs_dir=run_args['logs_dir'],
-            pipeline_config=pipeline_config,
-            pipeline_class=self.__class__
-        )
-
-        for pipeline_args in batch_pipeline_args:
-            # self.sites()
-            self.pipeline(pipeline_args, pipeline_config)
-        workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
-
-        # Register apps and data with Parsl, get all app futures and temporary files
-        pipeline_futs, tmp_files = ParslPipeline._register_workflow(
-            workflow_graph=workflow_graph,
-            parsl_config=ParslPipeline._choose_parsl_config(
-                pipeline_args_parsl_config=run_args['parsl_config'],
-                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
-                pipeline_default_parsl_config=self.parsl_configuration()
-            )
-        )
-        # logging.getLogger('parsl.dataflow.dflow').addHandler(DataflowResponseHandler(pipeline_futs))
-
-        # Monitor the run to completion
-        ParslPipeline._monitor_run(
-            pipeline_futs=pipeline_futs,
-            tmp_files=tmp_files
-        )
-
-
-    def _run_single_pipeline(self, pipeline_args, pipeline_config):
-        # Setup pipeline run
-        ParslPipeline._setup_run(
-            logs_dir=pipeline_args['logs_dir'],
-            pipeline_config=pipeline_config,
-            pipeline_class=self.__class__
-        )
-
-        # Run pipeline to register Software and assemble workflow graph
-        # self.sites()  # I think this isn't actually doing anything
-        self.pipeline(pipeline_args, pipeline_config)
-        workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
-
+    def _run(self, pipeline_args, pipeline_config, original_command, run_args=None):
         """
-        Start of major Parsl configuration refactor
-        Everything from this block to the end block will be affected, but I think other than 
-        that Operon is modular enough to where it will continue on
+        If run_args is not None, then this is a batch run because single runs won't
+        populate run_args.
+
+        :param pipeline_args:
+        :param pipeline_config:
+        :param original_command:
+        :param run_args:
+        :return:
         """
-
-        # Register apps and data with Parsl, get all app futures and temporary files
-        # TODO This needs to return a parsl.config.Config object
-        # The config_type might be unnecessary now since everything will be wrapped in a Config object,
-        # even the Thread runs
-
-        # TODO This no longer needs to take in a DFK, only the Config and workflow
-        pipeline_futs, tmp_files = ParslPipeline._register_workflow(
-            workflow_graph=workflow_graph,
-            parsl_config=ParslPipeline._choose_parsl_config(
-                pipeline_args_parsl_config=pipeline_args['parsl_config'],
-                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
-                pipeline_default_parsl_config=self.parsl_configuration()
-            )
-        )
-
-        """
-        End of major Parsl configuration refactor
-        """
-
-        # Monitor the run to completion
-        ParslPipeline._monitor_run(
-            pipeline_futs=pipeline_futs,
-            tmp_files=tmp_files
-        )
-
-    @staticmethod
-    def _setup_run(logs_dir, pipeline_config, pipeline_class):
         # Ensure the pipeline() method is overridden
-        if 'pipeline' not in vars(pipeline_class):
+        if 'pipeline' not in vars(self.__class__):
             raise MalformedPipelineError('Pipeline has no method pipeline()')
 
-        # Set up logs dir
+        # Set up logging
+        logs_dir = (run_args or pipeline_args).get('logs_dir')
+        run_name = (run_args or pipeline_args).get('run_name')
         os.makedirs(logs_dir, exist_ok=True)
-        setup_logger(logs_dir)
+        setup_logger(logs_dir, run_name)
 
         # Set up temp dir
         ParslPipeline._pipeline_run_temp_dir = tempfile.TemporaryDirectory(
@@ -553,14 +488,40 @@ class ParslPipeline(object):
             suffix='__operon'
         )
 
+        # Log initial run conditions
+        logger.info(f'Executing: operon {original_command}')
+        logger.info(f'Who and where: {getuser()}@{gethostname()}:{os.getcwd()}')
+        if run_name != 'run':
+            logger.info(f'Run name: {run_name}')
+
         # Respond to events in the Dataflow logging
         # logging.getLogger('parsl.dataflow.dflow').addHandler(DataflowResponseHandler())
 
         # Give pipeline config to Software class
         Software._pipeline_config = copy(pipeline_config)
 
+        # Run self.pipeline() to assemble workflow graph
+        if run_args is None:
+            self.pipeline(pipeline_args, pipeline_config)
+        else:
+            for single_pipeline_args in pipeline_args:
+                self.pipeline(single_pipeline_args, pipeline_config)
+
+        # Hand the run over to Parsl and monitor for completion
+        ParslPipeline._start_and_monitor_run(
+            workflow_graph=ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values()),
+            parsl_config=ParslPipeline._choose_parsl_config(
+                pipeline_args_parsl_config=(run_args or pipeline_args).get('parsl_config'),
+                pipeline_config_parsl_config=pipeline_config.get('parsl_config'),
+                pipeline_default_parsl_config=self.parsl_configuration()
+            )
+        )
+
     @staticmethod
-    def _monitor_run(pipeline_futs, tmp_files):
+    def _start_and_monitor_run(workflow_graph, parsl_config):
+        # Register apps and data with Parsl, get all app futures and temporary files
+        pipeline_futs, tmp_files = ParslPipeline._register_workflow(workflow_graph, parsl_config)
+
         # Record start time
         start_time = datetime.now()
         logger.info('Started pipeline run\n@operon_start {}'.format(str(start_time)))
@@ -890,7 +851,6 @@ class ParslPipeline(object):
                     stdout=_app_blueprint['stdout'],
                     stderr=_app_blueprint['stderr']
                 )
-
 
             logger.info('{} assigned to executor {}, task id {}'.format(_app_blueprint['id'], site_assignment, _app_future.tid))
             app_futures.append((_app_blueprint['id'], _app_future))
