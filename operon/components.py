@@ -522,6 +522,8 @@ class ParslPipeline(object):
         # Register apps and data with Parsl, get all app futures and temporary files
         pipeline_futs, tmp_files = ParslPipeline._register_workflow(workflow_graph, parsl_config)
 
+        state = {name: 'pending' for name, fut in pipeline_futs}
+
         # Record start time
         start_time = datetime.now()
         logger.info('Started pipeline run\n@operon_start {}'.format(str(start_time)))
@@ -569,6 +571,7 @@ class ParslPipeline(object):
 
         # Wait for all apps to complete
         for name, fut in pipeline_futs:
+            fut_errored = True
             try:
                 fut.result()
             except AppFailure as e:
@@ -589,6 +592,10 @@ class ParslPipeline(object):
                 logger.info('{} produced a RemoteError\n{}'.format(name, e.traceback))
             except Exception as e:
                 logger.info('{} produced a general error\n{}'.format(name, traceback.format_exc()))
+            else:
+                fut_errored = False
+            finally:
+                state[name] = 'failed' if fut_errored else 'completed'
 
         # All apps are complete, so kill running listener thread
         running_listener_q.put('kill')
@@ -610,6 +617,12 @@ class ParslPipeline(object):
             str(elapsed_time),
             str(elapsed_time.seconds)
         ))
+
+        # Log any failures
+        failures = [name for name, state_ in state.items() if state_ == 'failed']
+        pendings = [name for name, state_ in state.items() if state_ == 'pending']
+        logger.info('Failed apps: {}'.format(' '.join(failures) if failures else 'None'))
+        logger.info('Apps never ran: {}'.format(' '.join(pendings) if pendings else 'None'))
 
         # Remove stream handler before outputting captured streams
         logger.handlers.pop(1)
