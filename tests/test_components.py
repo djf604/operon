@@ -76,7 +76,6 @@ def test_redirects():
     r_norm_const = Redirect(stream=Redirect.STDOUT, dest='/path/to/dest')
     r_stderr = Redirect(stream='2>', dest='/path/to/dest')
     r_stderr_const = Redirect(stream=Redirect.STDERR, dest='/path/to/dest')
-    r_append = Redirect(stream='>>', dest='/path/to/dest')
     r_both = Redirect(stream='&>', dest='/path/to/dest')
     r_both_const = Redirect(stream=Redirect.BOTH, dest='/path/to/dest')
     r_null = Redirect(stream='>', dest=Redirect.NULL)
@@ -92,7 +91,6 @@ def test_redirects():
 
     # Ensure mode is proper
     assert r_norm.mode == 'w'
-    assert r_append.mode == 'a'
 
     # Ensure NULL constant works
     assert str(r_null) == '1>/dev/null'

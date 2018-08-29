@@ -20,14 +20,14 @@ ParslPipeline._pipeline_run_temp_dir = tempfile.TemporaryDirectory(
 )
 
 
-def reset_componenets():
+def reset_components():
     # Reset all components
     _ParslAppBlueprint._id_counter = 0
     _ParslAppBlueprint._blueprints = dict()
     Software._software_paths = set()
     Data._data = dict()
     logger.handlers = list()
-    Meta._sites = dict()
+    Meta._executors = dict()
 
 
 def pipeline_components_for_tests():
@@ -132,15 +132,15 @@ def multipipeline_components_for_tests():
                 with open(out, 'w') as outfile:
                     outfile.write('{}\n'.format(id_))
 
-    Meta.define_site(name='small', resources={
+    Meta.define_executor(label='small', resources={
         'cpu': '1',
         'mem': '1G'
     })
-    Meta.define_site(name='med', resources={
+    Meta.define_executor(label='med', resources={
         'cpu': '2',
         'mem': '2G'
     })
-    Meta.define_site(name='large', resources={
+    Meta.define_executor(label='large', resources={
         'cpu': '3',
         'mem': '3G'
     })
@@ -150,7 +150,7 @@ def multipipeline_components_for_tests():
     petrichor.register(
         Parameter('--sleep', '2'),
         Redirect(stream='>', dest=Data('a.out')),
-        meta={'site': 'small'}
+        meta={'executor': 'small'}
     )
 
     # App b, start=0, end=3
@@ -158,7 +158,7 @@ def multipipeline_components_for_tests():
     petrichor.register(
         Parameter('--sleep', '3'),
         Redirect(stream='>', dest=Data('b.out')),
-        meta={'site': 'med'}
+        meta={'executor': 'med'}
     )
 
     # App c, start=0, end=5
@@ -166,7 +166,7 @@ def multipipeline_components_for_tests():
     petrichor.register(
         Parameter('--sleep', '5'),
         Redirect(stream='>', dest=Data('c.out')),
-        meta={'site': 'large'}
+        meta={'executor': 'large'}
     )
 
     # App d, start=5, end=8
@@ -179,14 +179,14 @@ def multipipeline_components_for_tests():
         },
         inputs=[Data('a.out'), Data('b.out'), Data('c.out')],
         outputs=[Data('d1.out'), Data('d2.out')],
-        meta={'site': 'small'}
+        meta={'executor': 'small'}
     )
 
     # App e, start=0, end=10
     # sleep_5
     app_e = bash_sleep.register(
         Parameter('10'),
-        meta={'site': 'med'}
+        meta={'executor': 'med'}
     )
 
     # App g, start=10, end=12
@@ -200,7 +200,7 @@ def multipipeline_components_for_tests():
         inputs=[Data('d2.out')],
         outputs=[Data('g1.out'), Data('g2.out')],
         wait_on=[app_e],
-        meta={'site': 'small'}
+        meta={'executor': 'small'}
     )
 
     # App f, start=8, end=11
@@ -209,7 +209,7 @@ def multipipeline_components_for_tests():
         Parameter('--sleep', '3'),
         Parameter('--outfile', Data('f.out').as_output(tmp=True)),
         extra_inputs=[Data('d1.out')],
-        meta={'site': 'med'}
+        meta={'executor': 'med'}
     )
 
     # App h, start=12, end=18
@@ -217,7 +217,7 @@ def multipipeline_components_for_tests():
     app_h = bash_sleep.register(
         Parameter('6'),
         extra_inputs=[Data('g2.out')],
-        meta={'site': 'large'}
+        meta={'executor': 'large'}
     )
 
     # App i, start=18, end=20
@@ -227,11 +227,12 @@ def multipipeline_components_for_tests():
         Parameter('--outfile', Data('i.final').as_output()),
         extra_inputs=[Data('g1.out'), Data('f.out')],
         wait_on=[app_h],
-        meta={'site': 'small'}
+        meta={'executor': 'small'}
     )
 
 
 def test_workflow_graph_generation():
+    reset_components()
     pipeline_components_for_tests()
     workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
@@ -293,211 +294,156 @@ def test_workflow_graph_generation():
 
 
 def test_correct_dfk_cascade():
-    direct_pass = """
-    {
-    "sites": [{
-        "site": "four_jobs",
-        "auth": {
-            "channel": "ssh",
-            "hostname": "192.170.228.90",
-            "username": "dominic",
-            "scriptDir": "/cephfs/users/dominic/.ippscripts"
-        },
-        "execution": {
-            "executor": "ipp",
-            "provider": "slurm",
-            "block": {
-                "nodes": 1,
-                "taskBlocks": 1,
-                "initBlocks": 1,
-                "maxBlocks": 3,
-                "minBlocks": 1,
-                "walltime": "48:00:00"
-            }
-        }
-    }],
-    "globals": {"lazyErrors": true}
-    }
-    """
+    # Argument level, built-in DFK
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config='basic-threads-4',
+        pipeline_config_parsl_config='tiny_config.py',
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'threads'
 
-    with pytest.raises(ScalingFailed):
-        # Argument level, built-in DFK
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config='basic-threads-4',
-            pipeline_config_parsl_config='tiny_config.json',
-            pipeline_default_parsl_config=None
-        )).executors[0], ThreadPoolExecutor)
+    # Argument level, point to file
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config='tiny_config.py',
+        pipeline_config_parsl_config='tiny_config.py',
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'tiny_config'
 
-        # Argument level, point to JSON file
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config='tiny_config.json',
-            pipeline_config_parsl_config='tiny_config.json',
-            pipeline_default_parsl_config=None
-        )), DataFlowKernel)
+    # Argument level, point to JSON file, malformed
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config='malformed_config.json',
+        pipeline_config_parsl_config='tiny_config.json',
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'threads'
 
-        # Argument level, point to JSON file, malformed
-        assert ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config='malformed_config.json',
-            pipeline_config_parsl_config='tiny_config.json',
-            pipeline_default_parsl_config=None
-        )) is None
+    # Config level, built-in DFK
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config=None,
+        pipeline_config_parsl_config='basic-threads-4',
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'threads'
 
-        # Argument level, direct pass
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=direct_pass,
-            pipeline_config_parsl_config='tiny_config.json',
-            pipeline_default_parsl_config=None
-        )), DataFlowKernel)
+    # Config level, point to JSON file
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config=None,
+        pipeline_config_parsl_config='tiny_config.py',
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'tiny_config'
 
-        # Config level, built-in DFK
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=None,
-            pipeline_config_parsl_config='basic-threads-4',
-            pipeline_default_parsl_config=None
-        )).executors[0], ThreadPoolExecutor)
+    # Config level, point to JSON file, malformed
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config=None,
+        pipeline_config_parsl_config='malformed_config.json',
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'threads'
 
-        # Config level, point to JSON file
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=None,
-            pipeline_config_parsl_config='tiny_config.json',
-            pipeline_default_parsl_config=None
-        )), DataFlowKernel)
-
-        # Config level, point to JSON file, malformed
-        assert ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=None,
-            pipeline_config_parsl_config='malformed_config.json',
-            pipeline_default_parsl_config=None
-        )) is None
-
-        # Config level, direct pass
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=None,
-            pipeline_config_parsl_config=direct_pass,
-            pipeline_default_parsl_config=None
-        )), DataFlowKernel)
-
-        # Package default, built-in DFK
-        assert isinstance(ParslPipeline._get_dfk(*ParslPipeline._choose_parsl_config(
-            pipeline_args_parsl_config=None,
-            pipeline_config_parsl_config=None,
-            pipeline_default_parsl_config=None
-        )).executors[0], ThreadPoolExecutor)
+    assert ParslPipeline._choose_parsl_config(
+        pipeline_args_parsl_config=None,
+        pipeline_config_parsl_config=None,
+        pipeline_default_parsl_config=None
+    ).executors[0].label == 'threads'
 
 
 def test_various_pipelines(tmpdir_factory):
-    no_site_assignments = {
-        'petrichor_1': '__all__',
-        'petrichor_2': '__all__',
-        'petrichor_3': '__all__',
-        'notos_4': '__all__',
-        'sleep_5': '__all__',
-        'notos_6': '__all__',
-        'petrichor_7': '__all__',
-        'sleep_8': '__all__',
-        'petrichor_9': '__all__',
+    no_executor_assignments = {
+        'petrichor_1': 'all',
+        'petrichor_2': 'all',
+        'petrichor_3': 'all',
+        'notos_4': 'all',
+        'sleep_5': 'all',
+        'notos_6': 'all',
+        'petrichor_7': 'all',
+        'sleep_8': 'all',
+        'petrichor_9': 'all',
     }
     # Test single-single on threads
-    # do_pipeline_execution(tmpdir_factory, 'basic-threads-4', pipeline_components_for_tests,
-    #                       site_assignments=no_site_assignments)
+    do_pipeline_execution(tmpdir_factory, 'basic-threads-4', pipeline_components_for_tests,
+                          executor_assignments=no_executor_assignments)
     # Test single-single on ipp
-    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', pipeline_components_for_tests,
-    #                       site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.py', pipeline_components_for_tests,
+    #                       executor_assignments=no_executor_assignments)
 
     # Test single-multi on ipp
     # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', pipeline_components_for_tests,
-    #                       site_assignments=no_site_assignments)
+    #                       executor_assignments=no_executor_assignments)
 
     # Test multi-single on ipp
     # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_config.json', multipipeline_components_for_tests,
-    #                       site_assignments=no_site_assignments)
+    #                       executor_assignments=no_executor_assignments)
 
     # Test multi-multi-perfect on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.json', multipipeline_components_for_tests,
-                          site_assignments={
-                              'petrichor_1': 'small',
-                              'petrichor_2': 'med',
-                              'petrichor_3': 'large',
-                              'notos_4': 'small',
-                              'sleep_5': 'med',
-                              'notos_6': 'small',
-                              'petrichor_7': 'med',
-                              'sleep_8': 'large',
-                              'petrichor_9': 'small',
-                          })
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig.py', multipipeline_components_for_tests,
+    #                       executor_assignments={
+    #                           'petrichor_1': 'small',
+    #                           'petrichor_2': 'med',
+    #                           'petrichor_3': 'large',
+    #                           'notos_4': 'small',
+    #                           'sleep_5': 'med',
+    #                           'notos_6': 'small',
+    #                           'petrichor_7': 'med',
+    #                           'sleep_8': 'large',
+    #                           'petrichor_9': 'small',
+    #                       })
 
-    # Test multi-multi-some on ipp, missing sites in config
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_missing.json', multipipeline_components_for_tests,
-                          site_assignments={
-                              'petrichor_1': 'small',
-                              'petrichor_2': '__all__',
-                              'petrichor_3': 'large',
-                              'notos_4': 'small',
-                              'sleep_5': '__all__',
-                              'notos_6': 'small',
-                              'petrichor_7': '__all__',
-                              'sleep_8': 'large',
-                              'petrichor_9': 'small',
-                          })
-    # Test multi-multi-some on ipp, extra sites in config
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_extra.json', multipipeline_components_for_tests,
-                          site_assignments={
-                              'petrichor_1': 'small',
-                              'petrichor_2': 'med',
-                              'petrichor_3': 'large',
-                              'notos_4': 'small',
-                              'sleep_5': 'med',
-                              'notos_6': 'small',
-                              'petrichor_7': 'med',
-                              'sleep_8': 'large',
-                              'petrichor_9': 'small',
-                          })
+    # Test multi-multi-some on ipp, missing executors in config
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_missing.json', multipipeline_components_for_tests,
+    #                       executor_assignments={
+    #                           'petrichor_1': 'small',
+    #                           'petrichor_2': '__all__',
+    #                           'petrichor_3': 'large',
+    #                           'notos_4': 'small',
+    #                           'sleep_5': '__all__',
+    #                           'notos_6': 'small',
+    #                           'petrichor_7': '__all__',
+    #                           'sleep_8': 'large',
+    #                           'petrichor_9': 'small',
+    #                       })
+    # Test multi-multi-some on ipp, extra executors in config
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_some_extra.json', multipipeline_components_for_tests,
+    #                       executor_assignments={
+    #                           'petrichor_1': 'small',
+    #                           'petrichor_2': 'med',
+    #                           'petrichor_3': 'large',
+    #                           'notos_4': 'small',
+    #                           'sleep_5': 'med',
+    #                           'notos_6': 'small',
+    #                           'petrichor_7': 'med',
+    #                           'sleep_8': 'large',
+    #                           'petrichor_9': 'small',
+    #                       })
 
     # Test multi-multi-mismatch on ipp
-    do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_all_missing.json', multipipeline_components_for_tests,
-                          site_assignments=no_site_assignments)
+    # do_pipeline_execution(tmpdir_factory, 'tiny_ipp_multiconfig_all_missing.json', multipipeline_components_for_tests,
+    #                       executor_assignments=no_executor_assignments)
 
 
-def do_pipeline_execution(tmpdir_factory, parsl_config, pipeline_components_func, site_assignments):
+def do_pipeline_execution(tmpdir_factory, parsl_config, pipeline_components_func, executor_assignments):
     spoofed_logs_dir = str(tmpdir_factory.mktemp('logs'))
     # Run pipeline to register Software and assemble workflow graph
-    reset_componenets()
+    reset_components()
     setup_logger(spoofed_logs_dir)
     pipeline_components_func()
     workflow_graph = ParslPipeline._assemble_graph(_ParslAppBlueprint._blueprints.values())
 
-    # Register apps and data with Parsl, get all app futures and temporary files
-    config_type, parsl_config = ParslPipeline._choose_parsl_config(
-        pipeline_args_parsl_config=parsl_config,
-        pipeline_config_parsl_config=None,
-        pipeline_default_parsl_config=None
-    )
-    pipeline_futs, tmp_files = ParslPipeline._register_workflow(
+    ParslPipeline._start_and_monitor_run(
         workflow_graph=workflow_graph,
-        dfk=ParslPipeline._get_dfk(
-            config_type=config_type,
-            parsl_config=parsl_config
-        ),
-        parsl_config=config_type if config_type == 'builtin' else parsl_config
-    )
-
-    # Monitor the run to completion
-    ParslPipeline._monitor_run(
-        pipeline_futs=pipeline_futs,
-        tmp_files=tmp_files
+        parsl_config=ParslPipeline._choose_parsl_config(
+            pipeline_args_parsl_config=parsl_config,
+            pipeline_config_parsl_config=None,
+            pipeline_default_parsl_config=None
+        )
     )
 
     # Get the log file from this run
     pipeline_logfile = glob.glob(os.path.join(spoofed_logs_dir, '*.log'))[0]
 
-    # Ensure apps were sent to their correct sites
-    log_site_assignments = dict()
+    # Ensure apps were sent to their correct executors
+    log_executor_assignments = dict()
     with open(pipeline_logfile) as log:
         for line in log:
-            if 'assigned to site' in line:
-                line = line.split('>')[-1].strip().split()
-                log_site_assignments[line[0]] = line[-1]
-    assert log_site_assignments == site_assignments
+            if 'assigned to executor' in line:
+                line = line.split('>')[-1].strip().split(',')[0].split()
+                log_executor_assignments[line[0]] = line[-1]
+    assert log_executor_assignments == executor_assignments
 
     # Assert that the logs reflect the correct workflow dependency graph
     # We have no guarantee about when apps will run, only that they won't start
@@ -517,8 +463,9 @@ def do_pipeline_execution(tmpdir_factory, parsl_config, pipeline_components_func
     # Ensure the log show the dependency graph was honored for each app
     running_order = [
         l for l in cleaned_pipeline_log
-        if l.endswith(' running')
+        if l.endswith(' staged to run')
     ]
+
     dependent_apps = {
         'notos_4': {'petrichor_1', 'petrichor_2', 'petrichor_3'},
         'notos_6': {'notos_4', 'sleep_5'},
@@ -529,6 +476,6 @@ def do_pipeline_execution(tmpdir_factory, parsl_config, pipeline_components_func
 
     for dependent_app, dependencies in dependent_apps.items():
         # Find line containing dependent app
-        dependent_app_log_i = running_order.index(dependent_app + ' started running')
+        dependent_app_log_i = running_order.index(dependent_app + ' staged to run')
         previous_dependencies = set(running_order[:dependent_app_log_i])
-        assert set([d + ' finished running' for d in dependencies]).issubset(previous_dependencies)
+        assert set([d + ' staged to run' for d in dependencies]).issubset(previous_dependencies)

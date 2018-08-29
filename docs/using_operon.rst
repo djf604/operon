@@ -88,13 +88,15 @@ The set of accepted ``pipeline-options`` is defined by the pipeline itself and a
 run to run, such as input files, metadata, etc. Three options will always exist:
 
 * ``--pipeline-config`` can point to a pipeline config to use for this run only
-* ``--parsl-config`` can point to a file containing JSON that represents a Parsl config to use for this run only
+* ``--parsl-config`` can point to a Python file that represents a Parsl config to use for this run only (see below)
 * ``--logs-dir`` can point to a location where log files from this run should be deposited; if it doesn't exist, it
-  will be created; defaults to the currect directory
+  will be created; defaults to the current directory
+* ``--run-name`` gives a name to the run, which will be used in the log filename and helps differentiate this run from
+  other runs
 
-When an Operon pipeline is run, under the hood it creates a Parsl workflow which can be run in many different ways
-depending on the accompanying Parl configuration. This means that while the definition for a pipeline run with the
-``run`` subprogram is consistent, that actual execution model may vary if the Parsl configuration varies.
+When an Operon pipeline is run, under the hood it creates a Parsl workflow which can be exectuted in different ways
+depending on the accompanying Parsl configuration. This means that while the definition for a pipeline run with the
+``run`` subprogram is consistent, the actual execution model may vary if the Parsl configuration varies.
 
 .. _parsl_configuration:
 
@@ -105,20 +107,31 @@ Parsl is the package the powers Operon and and is responsible for Operon's power
 Operon itself is only a front-end abstraction of a Parsl workflow; the actual execution model is fully
 Parsl-specific and as such it's advised to check out the
 `Parsl documentation <http://parsl.readthedocs.io/en/latest/>`_
-to get a sense for how to design a Parls configuration for a specific need-case.
+to get a sense for how to design a Parsl configuration for a specific need-case.
+
+The Parsl configuration must be specified in a Python file where the variable name ``config`` contains an object of
+type ``parsl.config.Config``:
+
+.. code-block:: python
+
+    from parsl.config import Config
+
+    config = Config(
+        executors=[...],
+        lazy_errors=True,
+        retries=10
+    )
 
 The ``run`` subprogram attempts to pull a Parsl configuration from the user in the following order:
 
-1. From the command line argument ``--parsl-config``
-2. From the pipeline configuration key ``parsl_config``
-3. From a platform default JSON file located at ``$OPERON_HOME/.operon/parsl_config.json``
-4. A default parsl configuration provided by the pipeline
-5. A package default parsl configuration of 8 workers using Python threads
+1. A path from the command line argument ``--parsl-config``
+2. A path from the pipeline configuration key ``parsl_config``
+3. A package default Parsl configuration of 2 workers using Python threads
 
-The Parsl configuration can contain multiple sites, each with different models of execution and different available
-resources. If a multisite Parsl configuration is provided to Operon, it will try to match up the site names as best as
-possible and execute software on appropriate sites. Any software which can't find a Parsl configuration site match will
-run in a random site. The set of site names the pipeline expects is output as a part of ``operon show``.
+The Parsl configuration can contain multiple executors, each with different models of execution and different available
+resources. If a multiexecutor Parsl configuration is provided to Operon, it will try to match up the executor names as best as
+possible and execute software on appropriate sites. Any software which can't find a Parsl configuration executor match will
+run in a random executor. The set of executor names the pipeline expects is output as a part of ``operon show``.
 
 For more detailed information, refer to the
 `Parsl documentation <http://parsl.readthedocs.io/en/latest/userguide/configuring.html>`_ on the subject.

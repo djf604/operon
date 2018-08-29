@@ -73,8 +73,6 @@ class Pipeline(ParslPipeline):
         ersatz.register(
             wait_on=[master]
         )
-        return
-
 
         # Ersatz2 (2)
         ersatz.register(

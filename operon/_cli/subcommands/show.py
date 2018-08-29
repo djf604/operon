@@ -4,7 +4,8 @@ import argparse
 import json
 
 from operon._cli.subcommands import BaseSubcommand
-from operon.meta import _MetaSiteDynamic
+from operon.meta import _MetaExecutorDynamic
+from operon._util.home import file_appears_installed
 
 ARGV_PIPELINE_NAME = 0
 EXIT_CMD_SUCCESS = 0
@@ -28,7 +29,20 @@ class Subcommand(BaseSubcommand):
             parser.print_help()
             sys.exit(EXIT_CMD_SUCCESS)
 
+        # If a filepath is given, check to see if it appears installed
+        if file_appears_installed(pipeline_name):
+            sys.stderr.write('Note: It appears the given pipeline is a file instead of an installed pipeline, '
+                             'so some information may be missing.\n\n')
+
         pipeline_instance = self.get_pipeline_instance(pipeline_name)
+        if pipeline_instance is None:
+            # If pipeline class doesn't exist, exit immediately
+            sys.stderr.write('Pipeline {name} does not exist in {home}\n'.format(
+                name=pipeline_name,
+                home=self.home_pipelines + '/'
+            ))
+            sys.exit(EXIT_CMD_SYNTAX_ERROR)
+
         config_dictionary = pipeline_instance.configuration()
 
         # Start show subcommand output
@@ -58,17 +72,17 @@ class Subcommand(BaseSubcommand):
             sys.stdout.write('\nPipeline Default Parsl Configuration:\n')
             sys.stdout.write(json.dumps(pipeline_instance.parsl_configuration(), indent=4) + '\n')
 
-        # Show what site names this pipeline expects and resources associated with each
-        pipeline_sites = pipeline_instance.sites()
-        if pipeline_sites:
-            sys.stdout.write('\nPipeline Execution Sites:\n')
-            for site_name, site_description in pipeline_sites.items():
-                sys.stdout.write('{site_name}: {site_description}\n'.format(
-                    site_name=site_name,
-                    site_description=site_description['description']
+        # Show what executor names this pipeline expects and resources associated with each
+        pipeline_executors = pipeline_instance.executors()
+        if pipeline_executors:
+            sys.stdout.write('\nPipeline Executors:\n')
+            for executor_name, executor_description in pipeline_executors.items():
+                sys.stdout.write('{executor_name}: {executor_description}\n'.format(
+                    executor_name=executor_name,
+                    executor_description=executor_description['description']
                 ))
-                for resource, val in site_description['resources'].items():
-                    if isinstance(val, _MetaSiteDynamic):
+                for resource, val in executor_description['resources'].items():
+                    if isinstance(val, _MetaExecutorDynamic):
                         val = '[dynamic] {}'.format(val.description or '')
                     sys.stdout.write('\t{}: {}\n'.format(resource.capitalize(), val))
         """

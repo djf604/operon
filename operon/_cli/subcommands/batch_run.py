@@ -44,12 +44,13 @@ class Subcommand(BaseSubcommand):
                                                     'sample or unit to be run. Consult the documentation for details '
                                                     'on the expected format.'))
             run_args_parser.add_argument('--literal-input', action='store_true',
-                                         help=('If provided, each line of the input matrix will be intrepreted as '
+                                         help=('If provided, each line of the input matrix will be interpreted as '
                                                'if typed directly into the command line.'))
-            run_args_parser.add_argument('--separate-pools', action='store_true',
-                                              help=('If provided, Operon will run each sample or unit with its own '
-                                                    'pool of resources, essentially like calling a separate Operon '
-                                                    'instance for each sample or unit.'))
+            # run_args_parser.add_argument('--separate-pools', action='store_true',
+            #                                   help=('If provided, Operon will run each sample or unit with its own '
+            #                                         'pool of resources, essentially like calling a separate Operon '
+            #                                         'instance for each sample or unit.'))
+            run_args_parser.add_argument('--run-name', default='run', help='Name of this run for the log file')
             run_args_parser.add_argument('-h', '--help', action='store_true', default=argparse.SUPPRESS,
                                          help='Show help message for run args and pipeline args.')
 
@@ -124,10 +125,11 @@ class Subcommand(BaseSubcommand):
                         batch_pipeline_args.append(pipeline_args)
 
             # Run the pipeline in batch
-            pipeline_instance._run_batch_pipeline(
-                run_args=run_args,
+            pipeline_instance._run(
+                pipeline_args=batch_pipeline_args,
                 pipeline_config=parse_pipeline_config(run_args['pipeline_config']),
-                batch_pipeline_args=batch_pipeline_args
+                original_command='batch-run ' + ' '.join(subcommand_args),
+                run_args=run_args,
             )
         else:
             # If pipeline class doesn't exist, exit immediately
