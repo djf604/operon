@@ -152,38 +152,6 @@ A ``CondaPackage`` named tuple takes the following keys:
 To see which executables are offered by Bioconda, please refer to their `package index
 <https://bioconda.github.io/recipes.html>`_.
 
-Parsl Configuration
-###################
-A default Parsl configuration can be provided in the event the user doesn't provide any higher-precendence Parsl
-configuration. The returned ``dict`` will be fed directly to Parsl before execution.
-
-.. code-block:: python
-
-    def parsl_configuration(self):
-        return {
-            'sites': [
-                {
-                    'site': 'Local_Threads',
-                    'auth': {'channel': None},
-                    'execution': {
-                        'executor': 'threads',
-                        'provider': None,
-                        'max_workers': 4
-                    }
-                }
-            ],
-            'globals': {'lazyErrors': True}
-        }
-
-To better understand Parsl configuration, please refer to `their documentation
-<http://parsl.readthedocs.io/en/latest/userguide/configuring.html>`_ on the subject.
-
-.. note::
-
-    This method of configuring Parsl has very low precedence, and that's on purpose. The user is given every
-    opportunity to provide a configuration that works for her specific platform, so the configuration provided
-    by the pipeline is only meant as a desperation-style "we don't have anything else" configuration.
-
 Pipeline Configuration
 ######################
 The pipeline configuration contains attributes passed into the pipeline logic which may change from platform to
@@ -406,18 +374,18 @@ and ``Redirect`` objects.
 
 Meta ``operon.meta.Meta``
 #########################
-The ``Meta`` class has only one method ``define_site()`` used to give a name to a resource configuration.
+The ``Meta`` class has a method ``define_executor()`` used to give a name to a resource configuration.
 
 .. code-block:: python
 
     from operon.meta import Meta
 
-    Meta.define_site(name='small_site', resources={
+    Meta.define_executor(label='small_site', resources={
         'cpu': '2',
         'mem': '2G'
     })
 
-    Meta.define_site(name='large_site', resources={
+    Meta.define_executor(label='large_site', resources={
         'cpu': '8',
         'mem': '50G'
     })
@@ -480,14 +448,14 @@ dependencies are resolved.
 In the above example, ``third`` won't start running until both ``first`` is finished running and the output from
 ``second`` called ``second.out`` is available.
 
-Multisite Pipelines
+Multiexecutor Pipelines
 -------------------
 For many workflows, the resource requirements of its software won't be uniform. One solution is to calculate the
 largest resource need and allocate that to every software, but this leads to a large amount of unused resources. A
 better solution is to define resource pools of varying size and assign software to an appropriate pool. This can be
-done with the ``meta=`` keyword argument in two ways.
+done with the ``meta=`` keyword argument.
 
-The developer can define a resource configuration with a call to ``Meta.define_site()`` and then pass that name to the
+The developer can define a resource configuration with a call to ``Meta.define_executor()`` and then pass that name to the
 ``meta=`` keyword argument:
 
 .. code-block:: python
@@ -495,7 +463,7 @@ The developer can define a resource configuration with a call to ``Meta.define_s
     from operon.components import Software
     from operon.meta import Meta
 
-    Meta.define_site(name='small_site', resources={
+    Meta.define_executor(label='small_site', resources={
         'cpu': '2',
         'mem': '2G'
     })
@@ -505,30 +473,10 @@ The developer can define a resource configuration with a call to ``Meta.define_s
         Parameter('-a', '1'),
         Parameter('-b', '2'),
         meta={
-            'site': 'small_site'  # Matches the above Meta definition
+            'executor': 'small_site'  # Matches the above Meta definition
         }
     )
 
-The developer can also define only the resource requirements of a given software at the time of registration:
-
-.. code-block:: python
-
-    from operon.components import Software
-
-    soft1 = Software('soft1')
-    soft1.register(
-        Parameter('-a', '1'),
-        Parameter('-b', '2'),
-        meta={
-            'resources': {
-                'cpu': '2',
-                'mem': '2G'
-            }
-        }
-    )
-
-The above implicity defines a site called ``resources_(2,2G)``. For notes on how a multisite pipeline changes the
-Parsl configuration, refer to the section on :ref:`Parsl configuration <parsl_configuration>`.
 
 CodeBlock ``operon.components.CodeBlock``
 #########################################
@@ -601,11 +549,8 @@ which stream(s) to redirect and to where on the filesystem, respectively.
 .. code-block:: text
 
     Redirect.STDOUT         # >
-    Redirect.STDOUT_APPEND  # >>
     Redirect.STDERR         # 2>
-    Redirect.STDERR_APPEND  # 2>>
     Redirect.BOTH           # &>
-    Redirect.BOTH_APPEND    # &>>
 
 The order of ``Redirect`` objects passed to a ``Software`` instance, both in relation to each other and to other
 ``Parameter`` objects, doesn't matter. However, if more than two ``Redirect`` s are passed in, only the first two

@@ -22,7 +22,7 @@ from ipyparallel.error import RemoteError
 import networkx as nx
 
 from operon._util.logging import setup_logger
-from operon._util.home import get_operon_home, OperonState
+from operon._util.home import OperonState
 from operon._util.configs import cycle_config_input_options, built_in_configs
 from operon._util.apps import _DeferredApp, _ParslAppBlueprint
 from operon._util.errors import MalformedPipelineError, NoParslConfigurationError
@@ -123,7 +123,8 @@ class Software(_ParslAppBlueprint):
                 'cpu': <Number of CPUs>,
                 'mem': <Amount of memory>
             },
-            'site': <Name of the site to run this app>
+            'site': <Name of the executor to run this app, for backward compatibility>,
+            'executor': <Name of the executor to run this app>
         }
         """
         app_blueprint = {
@@ -553,7 +554,6 @@ class ParslPipeline(object):
                 # Identify newly running futures
                 for pending_fut in pending:
                     if pending_fut.parent is not None:
-                    # if pending_fut.parent is not None and pending_fut.parent._state == 'RUNNING':
                         logger.info('{} staged to run'.format(fut_map[pending_fut]))
                         running.add(pending_fut)
                 pending -= running
@@ -680,22 +680,6 @@ class ParslPipeline(object):
                 logger.info('Loaded Parsl config from pipeline config')
                 return loaded_config
 
-        # 3) Config defined as an installation default, if all above options are absent
-        # A stub parsl configuration is provided by init, but the user must manually make changes
-        # to the stub for this method to be activated, otherwise it will be ignored
-        # if os.path.isfile(os.path.join(get_operon_home(), 'parsl_config.json')):
-        #     init_parsl_config_filepath = os.path.join(get_operon_home(), 'parsl_config.json')
-        #     with open(init_parsl_config_filepath) as init_parsl_config_json:
-        #         try:
-        #             init_parsl_config = json.load(init_parsl_config_json)
-        #             if 'use' not in init_parsl_config:
-        #                 logger.info('Loaded Parsl config from installation default')
-        #                 return 'json', init_parsl_config_json.read().strip()
-        #         except json.JSONDecodeError:
-        #             logger.error('Malformed JSON when loading from installation default, trying next option')
-                # except ValueError:
-                #     logger.error('Bad Parsl config when loading from installation default, trying the next option')
-
         # 4) Config defined by the pipeline developer as a default, if no user config exists
         if pipeline_default_parsl_config:
             logger.info('Loaded Parsl config from pipeline default')
@@ -711,14 +695,14 @@ class ParslPipeline(object):
 
 
     @staticmethod
-    def _generate_site_app_factories(site_name=None):
-        sites_ = 'all' if site_name is None else [site_name]
+    def _generate_executor_app_factories(executor_name=None):
+        executors_ = 'all' if executor_name is None else [executor_name]
 
-        @python_app(executors=sites_, cache=True)
+        @python_app(executors=executors_, cache=True)
         def _pythonapp(func_, func_args, func_kwargs, **kwargs):
             return func_(*func_args, **func_kwargs)
 
-        @bash_app(executors=sites_, cache=True)
+        @bash_app(executors=executors_, cache=True)
         def _bashapp(cmd, success_on=None, **kwargs):
             return ('scodes=({exit_codes});{cmd};ecode=$?;for i in "${{{{scodes[@]}}}}";'
                     'do if [ "$i" = $ecode ];then exit 0;fi;done;exit 1').format(
@@ -737,27 +721,27 @@ class ParslPipeline(object):
         possibly ever be running concurrently.
 
         Pipeline is single, Config is single
-            * Assign all Apps to null site
-            * @App('python', dfk)  <-- No site=
+            * Assign all Apps to null executor
+            * @App('python', dfk)  <-- No executor=
 
         Pipeline is single, Config is multi
-            * Assign all Apps to null site (will be randomly assigned among configured sites)
+            * Assign all Apps to null executor (will be randomly assigned among configured executors)
             * Log warning of mismatch
 
         Pipeline is multi, Config is single
-            * Assign all Apps to null site
+            * Assign all Apps to null executor
             * Log warning of mismatch
 
         Pipeline is multi, Config is multi, perfect match
-            * Assign all Apps to their appropriate site
+            * Assign all Apps to their appropriate executor
 
         Pipeline is multi, Config is multi, some match
-            * Assign apps that can to their appropriate sites
-            * For the remaining, assign to first site
+            * Assign apps that can to their appropriate executors
+            * For the remaining, assign to first executor
             * Log warning of mismatch
 
         Pipeline is multi, Config is multi, no matches
-            * Assign all apps to first site
+            * Assign all apps to first executor
             * Log warning of mismatch
 
         :param workflow_graph:
@@ -768,11 +752,10 @@ class ParslPipeline(object):
         parsl.load(parsl_config)
 
         is_single_parsl_config = len(parsl_config.executors) <= 1
-        # is_single_parsl_config = parsl_config == 'builtin' or len(json.loads(parsl_config)['sites']) <= 1
 
         # Check to see if Pipeline is single or multi
-        pipeline_sites = set(Meta._sites.keys())  # Start with anything defined in Meta
-        is_single_pipeline_meta = len(pipeline_sites) <= 1
+        pipeline_executors = set(Meta._executors.keys())  # Start with anything defined in Meta
+        is_single_pipeline_meta = len(pipeline_executors) <= 1
 
         logger.debug('Pipeline is {}-{}'.format(
             'single' if is_single_pipeline_meta else 'multi',
@@ -780,13 +763,13 @@ class ParslPipeline(object):
         ))
 
         app_factories = dict()
-        # At a minimum define the __all__ site, which is a dfk with no specific site
-        app_factories['__all__'] = ParslPipeline._generate_site_app_factories()
+        # At a minimum define the 'all' executor, which is an executor with no specific label
+        app_factories['all'] = ParslPipeline._generate_executor_app_factories()
 
-        # If we have multiple sites, define them
+        # If we have multiple executors, define them
         if not any((is_single_parsl_config, is_single_pipeline_meta)):
             for executor in parsl_config.executors:
-                app_factories[executor.label] = ParslPipeline._generate_site_app_factories(site_name=executor.label)
+                app_factories[executor.label] = ParslPipeline._generate_executor_app_factories(executor_name=executor.label)
 
         # Some data containers
         app_futures, data_futures = list(), dict()
@@ -833,20 +816,25 @@ class ParslPipeline(object):
                     if app_nodes_registered.get(wait_on_app_id)
                 ])
 
-            # Select site to run this app on
-            site_assignment = '__all__'
+            # Select executor to run this app on
+            executor_assignment = 'all'
             if not any((is_single_parsl_config, is_single_pipeline_meta)):
-                # This is a multi-multi run, we might be able to assign to a site
+                # This is a multi-multi run, we might be able to assign to a executor
                 # Giving a name defined in Meta takes precedence
-                meta_site = _app_blueprint.get('meta', {}).get('site')
-                if meta_site is not None and meta_site in app_factories:
-                    site_assignment = meta_site
-                elif Meta._default_site is not None and Meta._default_site in app_factories:
-                    site_assignment = Meta._default_site
+                meta_executor = _app_blueprint.get('meta', {}).get('executor')
 
-            # Create the App future with a specific site App factory
+                # For backward compatibility with 'site' key
+                if meta_executor is None and 'site' in _app_blueprint.get('meta', {}):
+                    meta_executor = _app_blueprint.get('meta', {}).get('site')
+
+                if meta_executor is not None and meta_executor in app_factories:
+                    executor_assignment = meta_executor
+                elif Meta._default_executor is not None and Meta._default_executor in app_factories:
+                    executor_assignment = Meta._default_executor
+
+            # Create the App future with a specific executor App factory
             if _app_blueprint['type'] == 'bash':
-                _app_future = app_factories[site_assignment][BASH_APP](
+                _app_future = app_factories[executor_assignment][BASH_APP](
                     cmd=_app_blueprint['cmd'],
                     success_on=_app_blueprint['success_on'],
                     inputs=_app_inputs,
@@ -855,7 +843,7 @@ class ParslPipeline(object):
                     stderr=_app_blueprint['stderr']
                 )
             else:
-                _app_future = app_factories[site_assignment][PYTHON_APP](
+                _app_future = app_factories[executor_assignment][PYTHON_APP](
                     func_=_app_blueprint['func'],
                     func_args=_app_blueprint['args'],
                     func_kwargs=_app_blueprint['kwargs'],
@@ -865,7 +853,7 @@ class ParslPipeline(object):
                     stderr=_app_blueprint['stderr']
                 )
 
-            logger.info('{} assigned to executor {}, task id {}'.format(_app_blueprint['id'], site_assignment, _app_future.tid))
+            logger.info('{} assigned to executor {}, task id {}'.format(_app_blueprint['id'], executor_assignment, _app_future.tid))
             app_futures.append((_app_blueprint['id'], _app_future))
 
             # Set output data futures
@@ -926,20 +914,28 @@ class ParslPipeline(object):
 
     def sites(self):
         """
+        Kept around for backward compatibility.
+        """
+        return self.executors()
+
+    def executors(self):
+        """
         Override this method.
 
-        A dictionary which describes the sites this pipeline is intended to run on.
+        A dictionary which describes the executors this pipeline is intended to run on.
+
+        Example:
+        {
+            'executor1': {
+                'resources': {
+                    'cpu': Meta.dynamic(),
+                    'mem': '4G',
+                    'storage': '400G'
+                },
+                'description': ''
+            }
+        }
         """
-        # return {
-        #     'site1': {
-        #         'resources': {
-        #             'cpu': Meta.dynamic(),
-        #             'mem': '4G',
-        #             'storage': '400G'
-        #         },
-        #         'description': ''
-        #     }
-        # }
         return dict()
 
     def parsl_configuration(self):
