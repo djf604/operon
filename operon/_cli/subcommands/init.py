@@ -2,7 +2,6 @@ import os
 import sys
 import argparse
 import inspect
-import json
 import re
 import subprocess
 from datetime import datetime
@@ -10,7 +9,6 @@ from datetime import datetime
 import operon
 from operon._cli import _completer
 from operon._cli.subcommands import BaseSubcommand
-from operon._util.configs import init_config_stub
 from operon._util.home import OperonState
 
 ARGV_OPERON_HOME_ROOT = 0
@@ -108,12 +106,6 @@ def make_operon_home(operon_home_root):
         # Write out an empty Operon State JSON
         sys.stderr.write('Writing out empty state file\n')
         OperonState(operon_home_root=operon_home_root).db.insert(init_operon_record(operon_home_root))
-
-        # Write out a default parsl config stub
-        sys.stderr.write('Writing out default Parsl config stub\n')
-        parsl_config_stub_path = os.path.join(operon_home_root, '.operon', 'parsl_config.json')
-        with open(parsl_config_stub_path, 'w') as parsl_config_json:
-            parsl_config_json.write(json.dumps(init_config_stub, indent=2) + '\n')
 
         # Set OPERON_HOME to the root location in the user's .bashrc, .bash_profile, or .profile
         if operon_home_root != os.path.expanduser('~') and not os.environ.get('OPERON_HOME'):

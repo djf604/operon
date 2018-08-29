@@ -73,36 +73,3 @@ built_in_configs = {
     'basic-threads-1': partial(basic_threads, workers=1),
     'sequential-local': partial(basic_threads, workers=1)
 }
-
-init_config_stub = {
-    'use': 'Remove this key-value to activate this parsl config',
-    'sites': [
-        {
-            'site': 'Name of the site being defined',
-            'auth': {
-                'channel': 'Channel type [local, ssh, ssh-il]'
-            },
-            'execution': {
-                'executor': 'Mechanism that executes tasks on compute resources [ipp, threads, swift_t]',
-                'provider': 'Scheduler or resources type of the site [slurm, torque, condor, aws, ...]',
-                'block': {
-                    'nodes': 'Nodes to request per block',
-                    'taksBlocks': 'Workers to start per block',
-                    'initBlocks': 'Number of blocks to provision at execution start',
-                    'minBlocks': 'Min blocks to maintain during execution',
-                    'maxBlocks': 'Max blocks that can be provisioned',
-                    'walltime': 'Walltime allowed for the block in HH:MM:SS format',
-                    'options': {
-                        'attr': 'Provider specific attributes given to provider for execution'
-                    }
-                }
-            }
-        }
-    ],
-    'globals': {
-        'lazyErrors': True
-    },
-    'controller': {
-        'publicIp': 'Public IP address of the launching machine'
-    }
-}
