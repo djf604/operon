@@ -9,8 +9,15 @@ import inquirer
 from operon._cli.subcommands import BaseSubcommand
 from operon._util.home import OperonState
 
+# For pip before 31 Aug 2017
 try:
     from pip import main as pip
+except ImportError:
+    pass
+
+# For pip on or after 31 Aug 2017
+try:
+    from pip._internal import main as pip
 except ImportError:
     pass
 
