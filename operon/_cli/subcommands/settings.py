@@ -11,7 +11,7 @@ EXTENSION = 1
 
 class Subcommand(BaseSubcommand):
     def help_text(self):
-        return 'Lists installed pipelines in the default Operon home directory.'
+        return 'View or modify global Operon settings'
 
     def run(self, subcommand_args):
         parser = argparse.ArgumentParser(prog='operon settings')
@@ -27,8 +27,9 @@ class Subcommand(BaseSubcommand):
                 sys.stdout.write('\n{}\n'.format(key))
                 for definition in definitions:
                     sys.stdout.write('\t{}: {}\n'.format(definition['option'], definition['description']))
+            return
 
-        # If arguments are give, assert whether they're valid
+        # If arguments are given, assert whether they're valid
         key_exists = args['key'] in settings.schema.keys()
         value_valid = None
         if key_exists:

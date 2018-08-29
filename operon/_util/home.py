@@ -2,6 +2,7 @@ import os
 from importlib.util import spec_from_file_location, module_from_spec
 
 import tinydb
+import parsl.config
 
 FILENAME_BASE = 0
 
@@ -27,10 +28,15 @@ class OperonState(object):
     db = None
     query = tinydb.Query()
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, operon_home_root=None, *args, **kwargs):
         if not cls._init:
-            cls.db = tinydb.TinyDB(os.path.join(cls._operon_home_root, '.operon', '.operon_state_db.json'))
+            db_path = os.path.join(operon_home_root or cls._operon_home_root,
+                                   '.operon', '.operon_state_db.json')
+            cls.db = tinydb.TinyDB(db_path)
         return super().__new__(cls, *args, **kwargs)
+
+    # def __init__(self, *args, **kwargs):
+    #     pass
 
     @classmethod
     def pipelines_installed(cls):
@@ -72,17 +78,29 @@ def pipeline_is_installed(pipeline_name, force_state_installation=False):
     return pipeline_file_exists
 
 
-def load_pipeline_file(pipeline_filepath):
+def load_module_from_file(module_filepath, package_name):
     """
     This only works in Python 3.5+
     Taken from https://stackoverflow.com/a/67692/1539628
-    :param pipeline_filepath:
-    :return:
     """
-    spec = spec_from_file_location('__operon.pipeline', pipeline_filepath)
+    spec = spec_from_file_location(package_name, module_filepath)
     mod = module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def load_pipeline_file(pipeline_filepath):
+    return load_module_from_file(pipeline_filepath, '__operon.pipeline')
+
+
+def load_parsl_config_file(parsl_config_filepath):
+    try:
+        config = getattr(load_module_from_file(parsl_config_filepath, '__operon.parsl_config'), 'config')
+    except:
+        raise
+    if not isinstance(config, parsl.config.Config):
+        raise TypeError
+    return config
 
 
 def file_appears_installed(filepath):
