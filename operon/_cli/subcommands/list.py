@@ -16,7 +16,7 @@ class Subcommand(BaseSubcommand):
         return 'Lists installed pipelines in the default Operon home directory.'
 
     def run(self, subcommand_args):
-        # Get argparse help funtionality
+        # Get argparse help functionality
         argparse.ArgumentParser(prog='operon list', description=self.help_text()).parse_args(subcommand_args)
         term = blessings.Terminal()
 
@@ -29,7 +29,7 @@ class Subcommand(BaseSubcommand):
             lambda c: 'Yes' if c else term.red('No')
         ]
 
-        pipelines_state = OperonState().list_pipelines()
+        pipelines_state = OperonState().pipelines_configured()
         rows = [''] * (len(pipelines_state) + 1)
 
         for col_i, col_contents in enumerate(zip(*pipelines_state)):

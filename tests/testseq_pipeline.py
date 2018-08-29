@@ -59,36 +59,51 @@ class Pipeline(ParslPipeline):
             Parameter('-O', Data(os.path.join(tmpdir, 'image.png')).as_output())
         )
 
-        # Ersatz2
+
+        master = ersatz.register()
+        ersatz.register(
+            wait_on=[master]
+        )
+        ersatz.register(
+            wait_on=[master]
+        )
+        ersatz.register(
+            wait_on=[master]
+        )
+        ersatz.register(
+            wait_on=[master]
+        )
+
+        # Ersatz2 (2)
         ersatz.register(
             Parameter('--inputs', Data(os.path.join(tmpdir, 'image.png')).as_input()),
             Parameter('--outputs', Data('21.out').as_output(), Data('22.out').as_output())
         )
 
-        # Ersatz1
+        # Ersatz1 (3)
         ersatz.register(
             Parameter('--outputs', Data('11.out').as_output())
         )
 
-        # Ersatz3
+        # Ersatz3 (4)
         ersatz.register(
             Parameter('--outputs', Data('31.out').as_output())
         )
 
-        # Ersatz4
+        # Ersatz4 (5)
         ersatz4 = ersatz.register(
-            Parameter('--inputs', Data('11.out').as_input(), Data('21.put').as_input()),
+            Parameter('--inputs', Data('11.out').as_input(), Data('21.out').as_input()),
             Parameter('--outputs', Data('41.out').as_output(), Data('42.out').as_output())
         )
 
-        # Ersatz5
+        # Ersatz5 (6)
         ersatz.register(
             Parameter('--inputs', Data('22.out').as_input(), Data('31.out').as_input()),
             Parameter('--outputs', Data('51.out').as_output()),
-            #extra_inputs=[ersatz4]  # TODO Software as dependencies
+            wait_on=[ersatz4]  # TODO Software as dependencies
         )
 
-        # Ersatz6
+        # Ersatz6 (7)
         ersatz.register(
             Parameter('--inputs', Data('41.out').as_input(), Data('42.out').as_input(), Data('51.out').as_input()),
             Parameter('--outputs', Data('61.out').as_output())

@@ -1,0 +1,24 @@
+{
+    "sites": [{
+        "site": "four_jobs",
+        "auth": {
+            "channel": "ssh",
+            "hostname": "192.170.228.90",
+            "username": "dominic",
+            "scriptDir": "/cephfs/users/dominic/.ippscripts"
+        },
+        "execution": {
+            "executor": "ipp",
+            "provider: "slurm",
+            "block": {
+                "nodes": 1,
+                "taskBlocks": 1,
+                "initBlocks": 1,
+                "maxBlocks": 3,
+                "minBlocks": 1,
+                "walltime": "48:00:00"
+            }
+        }
+    }],
+    "globals": {"lazyErrors": true}
+}

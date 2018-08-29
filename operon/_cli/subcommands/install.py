@@ -9,8 +9,15 @@ import inquirer
 from operon._cli.subcommands import BaseSubcommand
 from operon._util.home import OperonState
 
+# For pip before 31 Aug 2017
 try:
     from pip import main as pip
+except ImportError:
+    pass
+
+# For pip on or after 31 Aug 2017
+try:
+    from pip._internal import main as pip
 except ImportError:
     pass
 
@@ -60,15 +67,14 @@ class Subcommand(BaseSubcommand):
         try:
             shutil.copy2(pipeline_path, self.home_pipelines)
 
-            # Add pipeline to Operon state
-            with OperonState() as operon_state:
-                operon_state.insert_pipeline(
-                    name=pipeline_name,
-                    values={
-                        'installed_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
-                        'configured': False
-                    }
-                )
+            # Store pipeline record in DB
+            OperonState().db.insert({
+                'type': 'pipeline_record',
+                'name': pipeline_name,
+                'installed_date': datetime.now().strftime('%Y%b%d %H:%M:%S'),
+                'configured': False
+            })
+
             sys.stderr.write('Pipeline {} successfully installed.\n'.format(os.path.basename(pipeline_path)))
         except (IOError, OSError, shutil.Error):
             sys.stderr.write('Pipeline at {} could not be installed into {}.\n'.format(pipeline_path,
@@ -96,7 +102,7 @@ class Subcommand(BaseSubcommand):
                 )]) or dict()
 
                 # If user responds no, exit immediately
-                if proceed.get('overwrite'):
+                if not proceed.get('proceed'):
                     sys.exit(EXIT_CMD_SUCCESS)
 
             for package in pipeline_dependencies:

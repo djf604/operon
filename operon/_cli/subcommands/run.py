@@ -39,14 +39,16 @@ class Subcommand(BaseSubcommand):
             pipeline_args_parser.add_argument('--parsl-config',
                                               help='Path to a JSON file containing a Parsl config')
             pipeline_args_parser.add_argument('--logs-dir', default='.', help='Path to a directory to store log files')
+            pipeline_args_parser.add_argument('--run-name', default='run', help='Name of this run for the log file')
 
             # Get custom arguments from the Pipeline
             pipeline_instance.arguments(pipeline_args_parser)
             pipeline_args = vars(pipeline_args_parser.parse_args(subcommand_args[1:]))
 
-            pipeline_instance._run_pipeline(
+            pipeline_instance._run(
                 pipeline_args=pipeline_args,
-                pipeline_config=parse_pipeline_config(pipeline_args['pipeline_config'])
+                pipeline_config=parse_pipeline_config(pipeline_args['pipeline_config']),
+                original_command='run ' + ' '.join(subcommand_args)
             )
         else:
             # If pipeline class doesn't exist, exit immediately

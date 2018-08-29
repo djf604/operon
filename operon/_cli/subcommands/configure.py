@@ -10,13 +10,14 @@ from collections import defaultdict
 import inquirer
 
 from operon._cli.subcommands import BaseSubcommand
-from operon._util.home import OperonState
+from operon._util.home import OperonState, file_appears_installed
 from operon._util.errors import MalformedPipelineConfigError
 
 ARGV_PIPELINE_NAME = 0
 ARGV_FIRST_ARGUMENT = 0
 EXIT_CMD_SUCCESS = 0
 EXIT_CMD_SYNTAX_ERROR = 2
+FILENAME_BASE = 0
 INQUIRER_TYPES = {'text', 'path', 'confirm', 'list', 'checkbox', 'password'}
 
 readline.set_completer_delims(' \t\n;')
@@ -88,12 +89,15 @@ def configure(config_dict, current_config=None, breadcrumb=None, questions=None)
             breadcrumbs = key.split('__')[1:]
 
             # Get the inner dictionary needed
-            inner = root[breadcrumbs[0]]
-            for _ in breadcrumbs[1:-1]:
-                inner = inner[_]
+            if len(breadcrumbs) > 1:
+                inner = root[breadcrumbs[0]]
+                for _ in breadcrumbs[1:-1]:
+                    inner = inner[_]
 
-            # Set value of inner dictionary
-            inner[breadcrumbs[-1]] = value
+                # Set value of inner dictionary
+                inner[breadcrumbs[-1]] = value
+            else:
+                root[breadcrumbs[0]] = value
 
         # Convert whole thing to regular dict, return
         return json.loads(json.dumps(root))
@@ -163,6 +167,41 @@ class Subcommand(BaseSubcommand):
             sys.exit(EXIT_CMD_SUCCESS)
 
         pipeline_name = subcommand_args[ARGV_PIPELINE_NAME]
+        # Check if pipeline_name is a path, if so ask for confirmation
+        if file_appears_installed(pipeline_name):
+            sys.stderr.write(
+                'There appears to be an installed pipeline called {}, are you sure '
+                'you mean to generate a configuration for the file {}?\n'.format(
+                    os.path.splitext(os.path.basename(pipeline_name))[FILENAME_BASE],
+                    pipeline_name
+                )
+            )
+            confirmed_configure_file = inquirer.prompt([inquirer.Confirm(
+                'confirmed_configure_file',
+                message='Confirm?'
+            )]) or dict()
+
+            if not confirmed_configure_file.get('confirmed_configure_file'):
+                sys.stderr.write('User aborted configuration.\n')
+                sys.exit(EXIT_CMD_SUCCESS)
+
+        if os.path.isfile(pipeline_name):
+            pipeline_name_base = os.path.splitext(os.path.basename(pipeline_name))[FILENAME_BASE]
+            if pipeline_name_base in OperonState().pipelines_installed():
+                sys.stderr.write(
+                    'There appears to be an installed pipeline called {}, are you sure '
+                    'you mean to generate a configuration for the file {}?\n'.format(pipeline_name_base, pipeline_name)
+                )
+                confirmed_configure_file = inquirer.prompt([inquirer.Confirm(
+                    'confirmed_configure_file',
+                    message='Confirm?'
+                )]) or dict()
+
+                if not confirmed_configure_file.get('confirmed_configure_file'):
+                    sys.stderr.write('User aborted configuration.\n')
+                    sys.exit(EXIT_CMD_SUCCESS)
+
+        # If pipeline is in the system, or user confirmed yes, continue
         pipeline_instance = self.get_pipeline_instance(pipeline_name)
 
         if pipeline_instance is not None:
@@ -271,8 +310,8 @@ class Subcommand(BaseSubcommand):
             except (KeyboardInterrupt, EOFError):
                 sys.stderr.write('\nUser aborted configuration.\n')
                 sys.exit(EXIT_CMD_SUCCESS)
-            except AttributeError:
-                raise MalformedPipelineConfigError('Something about the configuration is malformed')
+            except AttributeError as e:
+                raise MalformedPipelineConfigError('Something about the configuration is malformed: {}'.format(e))
 
             # Write config out to file
             try:
@@ -280,8 +319,7 @@ class Subcommand(BaseSubcommand):
                     config_output.write(json.dumps(populated_config_dict, indent=2) + '\n')
 
                 # Set pipeline to configured in Operon state
-                with OperonState() as opstate:
-                    opstate.state['pipelines'][pipeline_name]['configured'] = True
+                OperonState().db.update({'configured': True}, OperonState().query.name == pipeline_name)
 
                 sys.stderr.write('Configuration file successfully written.\n')
             except IOError:
