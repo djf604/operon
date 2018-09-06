@@ -105,7 +105,7 @@ class Software(_ParslAppBlueprint):
             stdout_redirect=' > {}'.format(blueprint['stdout']) if blueprint['stdout'] else '',
             stderr_redirect=' 2> {}'.format(blueprint['stderr']) if blueprint['stderr'] else ''
         )
-        logger.debug('Registered {} as {}\nCommand: {}'.format(blueprint['name'], blueprint['id'], cmd))
+        logger.info('Registered {} as {}\nCommand: {}'.format(blueprint['name'], blueprint['id'], cmd))
         return _DeferredApp(blueprint['id'])
 
     def run(self, *args, **kwargs):
@@ -420,7 +420,7 @@ class CodeBlock(_ParslAppBlueprint):
             'stderr': stderr,
             'meta': kwargs_.get('meta', dict())
         }
-        logger.debug('Registered function {}\nArgs: {}\nKwargs: {}'.format(
+        logger.info('Registered function {}\nArgs: {}\nKwargs: {}'.format(
             func.__name__,
             args,
             kwargs
@@ -576,11 +576,11 @@ class ParslPipeline(object):
                 fut.result()
             except AppFailure as e:
                 logger.info('{} failed during execution'.format(name))
-                logger.debug(e.reason)
+                logger.info(e.reason)
                 logger.info('Check run log for output from failed {}'.format(name))
             except DependencyError as e:
                 logger.info('{} had a dependency fail'.format(name))
-                logger.debug(str(e))
+                logger.info(str(e))
             except MissingOutputs as e:
                 logger.info('{} did not produce expected outputs\n{}'.format(name, e))
             except ParslError as e:
@@ -634,13 +634,13 @@ class ParslPipeline(object):
             try:
                 captured_output_content = open(capture_output_path).read()
                 if captured_output_content:
-                    logger.debug('Output from {stream} stream of {app_name}:\n{msg}'.format(
+                    logger.info('Output from {stream} stream of {app_name}:\n{msg}'.format(
                         stream=stream[1:],  # Get extension of captured stream, without period
                         app_name=app_name,
                         msg=captured_output_content
                     ))
             except FileNotFoundError:
-                logger.debug('Output from {stream} of {app_name} could not be retrieved'.format(
+                logger.info('Output from {stream} of {app_name} could not be retrieved'.format(
                     stream=stream[1:],
                     app_name=app_name
                 ))
@@ -854,6 +854,9 @@ class ParslPipeline(object):
                 )
 
             logger.info('{} assigned to executor {}, task id {}'.format(_app_blueprint['id'], executor_assignment, _app_future.tid))
+            logger.debug(f'App blueprint: {_app_blueprint}')
+            logger.debug(f'App input futures: {_app_inputs}')
+            logger.debug(f'App future: {_app_future}')
             app_futures.append((_app_blueprint['id'], _app_future))
 
             # Set output data futures
